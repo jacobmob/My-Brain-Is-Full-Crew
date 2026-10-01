@@ -1878,7 +1878,7 @@ original_filename: "032.pdf"
 - [x] Create the topic taxonomy directory structure: `mkdir -p 03-Resources/study/{EE225,COMP_ENG_303,...}/{cards,quizzes,formulas,diagrams}` for each course
 - [x] Create initial `topics.json` for each course (can be empty `{"course": "EE225", "topics": {}}`)
 - [x] Create initial `Meta/image-categories.json` (can be empty `{"categories": {}}`)
-- [ ] Write the generation subagent prompt that includes the Topic Matching Protocol AND the Image-Aware Generation Protocol (this is a separate .md file the ingestion agent spawns as a subagent)
+- [x] Write the generation subagent prompt that includes the Topic Matching Protocol AND the Image-Aware Generation Protocol (this is a separate .md file the ingestion agent spawns as a subagent)
 - [ ] ImageMagick and poppler-utils are already installed in WSL (0.0); Marker and Surya in the venv (0.11)
 - [ ] Document extraction is Marker, installed in 0.11 -- nothing extra here
 - [ ] Test with: drop a photo of handwritten notes into Drive -> confirm classification and vault note creation

@@ -7,6 +7,11 @@
 <!-- JACOB:START personal extensions -->
 ## Personal extensions -- defined in this project, valid to use
 
+### Extra skills (same priority as the skill table)
+| Skill | Triggers |
+|-------|----------|
+| /study-gen | none: user-invoked only (3 AM batch, or type /study-gen <notes> after "process my uploads") |
+
 ### Extra agents -- check THESE triggers BEFORE the core agent table
 | Agent | Triggers |
 |-------|----------|
