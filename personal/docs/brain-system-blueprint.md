@@ -420,7 +420,8 @@ inotifywait -m -q -e close_write -e moved_to --format '%w%f' "$WATCH_DIR" | whil
     # Immediate processing for urgent files.
     # Unattended runs can't answer permission prompts -- tools must be allowlisted
     # in .claude/settings.local.json (0.12) or passed with --allowedTools.
-    cd "$HOME/brain-vault" && claude --model haiku --print "Process urgent file: $event using the ingestion agent."
+    # --permission-mode acceptEdits lets it write notes (Write/Edit); Bash still follows the allowlist.
+    cd "$HOME/brain-vault" && claude --model haiku --permission-mode acceptEdits --print "Process urgent file: $event using the ingestion agent."
   else
     # Queue everything else for 3 AM batch
     echo "$event" >> "$QUEUE"
@@ -454,7 +455,7 @@ if [ -f "$QUEUE" ] && [ -s "$QUEUE" ]; then
   "$PY" "$SCRIPTS/local-preprocess.py" --queue "$QUEUE"
 
   # Single Claude invocation processes all pre-processed files
-  claude --model sonnet --print \
+  claude --model sonnet --permission-mode acceptEdits --print \
     "Use the ingestion agent on every file listed in Meta/ingestion-queue.txt \
      as one batch. For each file, read its .meta.json first (from local \
      pre-processing). Run the full ingestion pipeline including study material \
@@ -475,7 +476,7 @@ PENDING=$(grep -rlE "^type: (academic-notes|lecture-notes)" "$VAULT" --include=*
             --exclude-dir=.claude --exclude-dir=My-Brain-Is-Full-Crew --exclude-dir=Templates \
           | xargs -r grep -L "^study_generated:" 2>/dev/null)
 if [ -n "$PENDING" ]; then
-  claude --model sonnet --print \
+  claude --model sonnet --permission-mode acceptEdits --print \
     "/study-gen -- Topic Matching Protocol -- for these notes, \
      then add study_generated: <today> to each note's frontmatter: $PENDING"
 fi
@@ -483,7 +484,7 @@ fi
 # Step 2b: Rewrite study items you flagged in the Kiosk (skipped if none)
 FLAGGED=$(grep -l '"type": *"card-flagged"' "$VAULT"/Meta/events/study-skill/*.json 2>/dev/null)
 if [ -n "$FLAGGED" ]; then
-  claude --model sonnet --print \
+  claude --model sonnet --permission-mode acceptEdits --print \
     "Rewrite the flagged study items in these events, following each note. Write each \
      rewrite as a new item with replaces: <old id> in the same topic file, then move \
      the events to Meta/events/processed/: $FLAGGED"
@@ -492,7 +493,7 @@ fi
 # Step 3: File whatever is sitting in the vault inbox (replaces the old 5 PM
 # evening triage). Uses the upstream /inbox-triage skill.
 if [ -n "$(ls -A "$VAULT/00-Inbox" 2>/dev/null)" ]; then
-  claude --model haiku --print "triage the inbox"
+  claude --model haiku --permission-mode acceptEdits --print "triage the inbox"
 fi
 ```
 
@@ -1129,7 +1130,7 @@ Also in your fork's `DISPATCHER.md` skill table: remove "plan my week" from `/we
 }
 ```
 
-Cron-invoked `claude --print` runs can't answer permission prompts, so anything a batch job needs must be on this list (or passed per-run with `--allowedTools`). Start narrow and add entries as batch logs show denials. The ingestion entries (1.1) assume the agent runs commands from the vault root with relative paths, no `cd`: file moves and deletes are limited to `drive-inbox/` and `Meta/ingestion-*`, and NotebookLM to `source add` and `create`.
+Cron-invoked `claude --print` runs can't answer permission prompts, so anything a batch job needs must be on this list (or passed per-run with `--allowedTools`). Start narrow and add entries as batch logs show denials. Bash rules don't cover the Write and Edit tools: batch runs that create or edit notes pass `--permission-mode acceptEdits` (0.3), which auto-approves file edits inside the vault and leaves Bash on this allowlist. The ingestion entries (1.1) assume the agent runs commands from the vault root with relative paths, no `cd`: file moves and deletes are limited to `drive-inbox/` and `Meta/ingestion-*`, and NotebookLM to `source add` and `create`.
 
 **Why `"model": "sonnet"` is in there:** Claude Code on the Pro plan now defaults to Opus 5.5. Every Remote Control message and every session you open would otherwise run on the most expensive model. This line makes Sonnet 5.5 the vault's default; cron jobs still pick their own with `--model`.
 
