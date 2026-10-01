@@ -24,7 +24,7 @@ You have no clock. Get the time with `date +%Y-%m-%dT%H:%M:%S` (local, no Z); ne
 ## Picking a task ("what should I do", "I have N minutes", "energy N")
 
 Read frontmatter only, never note bodies. Find candidates with
-`grep -rl '^status: ready' {{projects}} --include=*.md`, then `head -25` each file.
+`grep -rl '^status: ready' {{projects}} --include=*.md`, then `head -25` each file. Cover EVERY file the grep lists; never rank from a partial sample.
 
 Missing values: `effort: 2`, `time_est: 15min`, `priority: medium`. Parse `time_est` to minutes (`45min`, `1.5h`). If no time or energy was given, ask once; otherwise don't ask.
 
