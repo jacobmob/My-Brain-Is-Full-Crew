@@ -8,7 +8,6 @@ description: >
 context: fork
 model: sonnet
 effort: low
-disable-model-invocation: true
 ---
 
 ## Paths and rules

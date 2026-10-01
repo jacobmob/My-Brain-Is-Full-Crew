@@ -10,7 +10,7 @@
 ### Extra skills (same priority as the skill table)
 | Skill | Triggers |
 |-------|----------|
-| /study-gen | none: user-invoked only (3 AM batch, or type /study-gen <notes> after "process my uploads") |
+| /study-gen | after ingestion returns `### Suggested next skill` with study-gen: run /study-gen on those notes (not part of the 3-agent limit); 3 AM batch |
 
 ### Extra agents -- check THESE triggers BEFORE the core agent table
 | Agent | Triggers |

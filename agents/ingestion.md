@@ -81,4 +81,11 @@ Remove processed paths from the queue file (delete it if empty). Report one line
 - decomposer: <assignment note paths>
 ```
 
-only when assignments were filed. Academic notes keep no `study_generated:` field; `/study-gen` picks them up.
+only when assignments were filed. When academic notes (lecture-notes, diagram) were filed, also end with:
+
+```
+### Suggested next skill
+- study-gen: <academic note paths>
+```
+
+Academic notes keep no `study_generated:` field; `/study-gen` sets it.
