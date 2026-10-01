@@ -24,7 +24,8 @@ Load only the assignment description and rubric. For a PDF or image, read the `.
 1. Read `{{meta}}/user-profile.md` for the course code and folder. The course folder is `{{projects}}/<course>/`; tasks go in `{{projects}}/<course>/tasks/`.
 2. Extract the overall deliverable, due date, and rubric items. If the due date is missing, ask; never guess it.
 3. Split into discrete subtasks in dependency order. One sitting each: 15 minutes to 2 hours. Cover every rubric item; one task may cover several, none may be left out.
-4. For each subtask estimate `time_est` and `effort` (1-5). Low effort (1-2) means doable tired: formatting, collecting files, citations. High effort (4-5) needs focus: derivations, writing, debugging.
+4. For each subtask pick `task_type` (reading, writing, coding, problem-set, lab, study-session, admin) and estimate `time_est` and `effort` (1-5). Low effort (1-2) means doable tired: formatting, collecting files, citations. High effort (4-5) needs focus: derivations, writing, debugging.
+   Then correct `time_est` for the user's measured pace: read `{{meta}}/task-timing.json` if it exists and multiply by the first `avg_ratio` with `samples` >= 2 from `averages_by_type_course["<task_type>|<course>"]`, then `averages_by_type[<task_type>]`, then `averages_by_course[<course>]`. Round to 5 minutes. No match: keep the estimate. Mention any correction in the output ("problem-set x1.4 from 6 timed tasks").
 5. Work backward from the due date: final review task lands at least one day before it, and every task's `due` leaves a buffer of at least a day before its dependents' dates. If the time left cannot fit the work, say so plainly and schedule as early as possible.
 6. Write one note per subtask, then a parent note `{{projects}}/<course>/<Assignment Title>.md` (`type: assignment`, `summary`, `course`, `due`, links to all tasks). If the parent note already exists, reuse it and add no duplicate tasks.
 
@@ -37,6 +38,7 @@ Task file name: `<COURSE>-<assignment-slug>-<task-slug>.md`. Frontmatter, exactl
 summary: "<one line>"
 type: task
 course: <COURSE>
+task_type: <type>
 parent_assignment: "[[<Assignment Title>]]"
 effort: <1-5>
 time_est: <e.g. 45min or 1.5h>

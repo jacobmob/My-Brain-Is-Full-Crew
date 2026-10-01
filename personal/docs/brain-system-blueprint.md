@@ -46,7 +46,7 @@ Everything else depends on this. Do this first.
 | Ollama (native app, full GPU) | cron, inotify watchers, everything in `personal/scripts/` |
 | Task Scheduler (starts WSL at boot) | The Kiosk, gws, rclone, Marker, Surya, ImageMagick, ffmpeg |
 | Power and update settings | Speech-to-text and Kokoro voice (use the GPU through the Windows driver) |
-| Obsidian (optional, for browsing) | Git backup |
+| | Git backup, Obsidian (a Linux app shown on the Windows desktop) |
 
 **Three rules that head off most WSL problems:**
 1. **The vault lives in Linux** (`~/brain-vault`), never under `/mnt/c`. Linux access to Windows drives is several times slower, and inotify never sees changes Windows makes there.
@@ -80,7 +80,7 @@ Everything else depends on this. Do this first.
 - [ ] Ollama: install the Windows app. The models to pull are listed in 0.11. From Ubuntu, check `curl -s localhost:11434/api/tags` lists them.
 - [ ] Tailscale: install the Windows app only, not inside WSL. In the Tailscale admin console, turn on MagicDNS and HTTPS certificates (the Kiosk uses both, 0.13).
 - [ ] Power: Settings -> System -> Power, sleep "Never"; `powercfg /hibernate off`; set Windows Update active hours around your day. A forced update restart is fine once the boot task below exists.
-- [ ] Obsidian (optional): open `\\wsl.localhost\Ubuntu\home\<you>\brain-vault` as a vault for browsing. It's slower over that path, and Claude Code is the interface anyway.
+- [ ] Obsidian runs **inside Ubuntu**, not as the Windows app: Windows Obsidian won't open a vault that lives in WSL. Download the Linux `.deb` from obsidian.md/download, then `sudo apt install /mnt/c/Users/Jacob/Downloads/obsidian_*_amd64.deb`. Windows 11 shows Linux apps in their own window (WSLg) and adds them to the Start menu. Open `/home/jacob/brain-vault` as the vault; it sees every change the moment Claude makes it.
 
 **Starting everything at boot (set this up once 0.9 exists; add the Kiosk and watchers as they come online):**
 
@@ -533,25 +533,19 @@ fi
 
 ### 0.5 -- Canvas Assignment Ingestion
 
-**Type:** MCP integration + fallback scraper
-**Existing resource:** canvas-week-plan@vishalsachdev/canvas-mcp (try first; still actively maintained as of September 2026)
-**Model:** Sonnet for parsing assignment details
-**Token tip:** Run once daily (morning), not continuously
+**Type:** Zero-token script reading the Canvas calendar feed
+**Existing resource:** Canvas's calendar feed (iCal). vishalsachdev/canvas-mcp is not an option here: Northwestern only issues Canvas API tokens to students for instructor-sponsored projects, after a security review ([Northwestern IT](https://services.northwestern.edu/TDClient/30/Portal/Requests/ServiceOfferingDet?ID=251)).
+**Model:** None for the sync; the Decomposer (1.2) breaks assignments down afterward
+**Token tip:** The feed already holds each assignment's name, course, due date, Canvas link and usually its description. A script reads it directly, so no Claude call is needed until there's something to break down.
 
 **Steps:**
 
-- [ ] **Try API access first:** Go to Canvas -> Account -> Settings -> scroll to "Approved Integrations" or look for "+ New Access Token." If available, generate a token and configure the Canvas MCP with it. Register the Canvas MCP in the dispatcher's allowed tools (0.12).
-- [ ] **If API is blocked, set up iCal feed:** Canvas -> Calendar -> Calendar Feed (link at bottom of page). Subscribe to this URL in Google Calendar (on the `gws` hub account). Assignment names and due dates then flow into the calendar cache (3.10), `/deadline-radar`, and Postman. No API key needed.
-- [ ] **This is still an open question -- test it in the first week.** Whichever method works decides how much of the Decomposer's input is automatic.
-- [ ] **For full assignment details (rubrics, descriptions):** Either:
-  - Use browser automation (Puppeteer/Chrome MCP) to scrape the assignments page after SSO login -- run daily
-  - Manually screenshot/export assignment pages from iPad when you get a complex assignment and drop into Drive `Brain-Inbox/`
-- [ ] **If Canvas MCP works:** Configure `canvas-week-plan` to pull assignments and feed them to the Decomposer agent (Phase 1)
-- [ ] Test: confirm assignment names and due dates appear in your system through whatever method works
-
-**Iteration:**
-
-- [ ] Once Decomposer agent exists (1.2), connect Canvas output directly to it for auto-decomposition of new assignments
+- [ ] Copy the feed link (Canvas -> Calendar -> Calendar Feed) into `~/.config/brain/canvas-feed-url`, readable only by you. It works like a password, so it never goes in the vault or its backups.
+- [ ] Also subscribe to it in Google Calendar on the hub account, so due dates show in the calendar cache (3.10), `/deadline-radar` and the morning briefing.
+- [ ] Write `personal/scripts/canvas-ics-sync.py` (cron, every 2 hours, zero tokens): download and parse the feed (`icalendar`); track UIDs in `Meta/canvas-seen.json`; for each new assignment, map the Canvas course name to a course code through the routing hints in `Meta/user-profile.md` and create a task note in `{{projects}}/<code>/` with the 0.1 task frontmatter plus `due:`, `canvas_url:` and `breakdown: pending`; changed due dates update the existing note; write a `new-assignment` event to `Meta/events/distributor/`. Reading the feed directly beats waiting on Google Calendar, which can take most of a day to refresh a subscribed feed.
+- [ ] The 3 AM batch gets a Step 1c: run the Decomposer on notes marked `breakdown: pending`, then set `breakdown: done`. Saying "break down <assignment>" does the same on demand.
+- [ ] **Full details (rubrics, attached PDFs):** save the Canvas page as a PDF into Drive's `Brain-Inbox`; ingestion matches it to the task by name and hands it to the Decomposer. For an occasional deep pull, the built-in browser can read a Canvas page during a live session after you sign in.
+- [ ] Test: run the sync on the real feed -> one note per upcoming assignment, in the right course folder; run it again -> no duplicates
 
 ---
 
@@ -1067,7 +1061,7 @@ Modified Ingestion Step 2 (Visual Classification):
 ### Extra tools that exist in this project
 - CLI: gws, rclone, marker_single, surya_detect, yt-dlp, python scripts in My-Brain-Is-Full-Crew/personal/scripts/, Ollama API (http://localhost:11434), the Kiosk (http://localhost:8484)
 - Installed third-party skills: notebooklm (notebooklm-py), deep-research, learn-this, youtube-transcript, article-extractor, unblock-action, create-ideas
-- MCP servers (only if connected): Canvas, Trello (official), Slack, Outlook
+- MCP servers (only if connected): Trello (official), Slack, Outlook
 
 ### Rules for the main session
 - Grep before reading; check frontmatter `summary:` before loading full notes.
@@ -1961,7 +1955,7 @@ Note: the practice problem above would be in `quizzes/rc-transient-analysis.json
 
 **Core behavior:**
 
-- Receives assignment information (from Canvas MCP, manual upload, or ingestion pipeline)
+- Receives assignment information (from the Canvas feed sync in 0.5, manual upload, or the ingestion pipeline)
 - Parses the assignment into:
   1. Overall deliverable and due date
   2. Discrete subtasks in dependency order
@@ -1980,6 +1974,7 @@ Note: the practice problem above would be in `quizzes/rc-transient-analysis.json
 summary: "Write the methods section for EE225 Lab 3 report"
 type: task
 course: EE225
+task_type: writing   # reading | writing | coding | problem-set | lab | study-session | admin
 parent_assignment: "[[EE225 Lab 3 Report]]"
 effort: 3
 time_est: 45min
@@ -2074,9 +2069,17 @@ Every time you start a task (Distributor assigns it), `task_started_at` goes int
     "reading": {"avg_ratio": 0.85, "samples": 15},
     "problem-set": {"avg_ratio": 1.55, "samples": 6},
     "study-session": {"avg_ratio": 1.10, "samples": 20}
+  },
+  "averages_by_course": {
+    "EE225": {"avg_ratio": 1.30, "samples": 18}
+  },
+  "averages_by_type_course": {
+    "writing|EE225": {"avg_ratio": 1.38, "samples": 5}
   }
 }
 ```
+
+The arithmetic lives in `personal/scripts/task-timing.py` (zero tokens), not in the Haiku prompt: `log` computes actual minutes from `task_started_at`, appends the entry and updates the three running averages; `factor --type T --course C` returns the most specific average with at least 2 samples (type+course, then type, then course), else 1.0. Durations under 1 minute or over 8 hours are refused and the Distributor asks for the real time. `type` is the task note's `task_type`.
 
 **How other components use this data:**
 - **Decomposer:** Reads `averages_by_type` when estimating subtask durations. If you consistently take 1.4x longer on coding tasks, future coding estimates are inflated by 1.4x.
@@ -2129,14 +2132,11 @@ Build these in the first 2 weeks of the quarter as you settle into your routine.
 - Runs 30 minutes before each class (triggered by cron reading your calendar, not /loop)
 - Pulls your notes from the previous lecture on that course (using grep for course tag + date sort)
 - Generates a 2-minute refresher: key concepts, unresolved questions you flagged, any assignment due soon for that class
-- Pushes to your phone via one of:
-  - Trello card (using Trello automation)
-  - Slack message to your `#brain-inbox`
-  - Just available via Remote Control when you check in
+- Pushes to your phone by emailing it to yourself with `gws` (subject "Before <course>"), so it arrives as an ordinary phone notification, and saves it to today's note in `{{daily}}/`
 
 **Steps:**
 
-- [ ] Write a cron script that reads the local calendar cache (`Meta/schedule/calendar-cache.json`, zero tokens) and fires `/pre-lecture <course>` 30 min before any class event
+- [ ] Write `personal/scripts/pre-lecture-trigger.sh` (cron, every 5 minutes, zero tokens): read the calendar cache (`Meta/schedule/calendar-cache.json`, built by `calendar-sync.sh`, 3.10), find class events starting in 25-35 minutes that haven't fired yet, and run `/pre-lecture <course>` once for each. `/pre-lecture` is a forked skill (`context: fork`, `model: haiku`)
 - [ ] Write the `/pre-lecture` skill: "Find the most recent 2-3 notes for [course] (grep the course tag, sort by date), read only their frontmatter summaries, and write a brief refresher to `{{daily}}/`. Include any assignment due within 3 days and any weak areas the study skill flagged."
 - [ ] Test with: manually trigger for one of your courses -> verify output is concise and useful
 - [ ] Add to cron schedule
@@ -4143,7 +4143,7 @@ In Claude Code (September 2026), `haiku` = Haiku 4.5, `sonnet` = Sonnet 5.5, `op
 1. 0.0 -- Windows host: WSL2 Ubuntu with mirrored networking and systemd, Linux toolchain, Ollama + Tailscale on Windows, no sleep
 2. 0.1 -- Fork the repo, create the `jacob` branch, run `launchme.sh`, run `/onboarding` (fills `Meta/user-profile.md`, including your email VIPs)
 3. 0.2 -- Set up gws with your own Google Cloud OAuth app (Gmail + Calendar). Test the university account first; if it's blocked, use the forwarding fallback
-4. 0.5 -- Set up Canvas iCal feed in Google Calendar
+4. 0.5 -- Canvas calendar feed: subscribe in Google Calendar, store the link privately, then build `canvas-ics-sync.py`
 5. 0.6 -- Git backup (cron, takes 5 minutes)
 6. 0.9 -- Remote Control in tmux (`remote-control.sh`) + `boot.sh` and the Task Scheduler startup task (0.0); Tailscale on the phone
 7. 0.10 -- Create the `Meta/events/` folders (background event inbox)
