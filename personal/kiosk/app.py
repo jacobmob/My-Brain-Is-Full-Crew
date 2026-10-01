@@ -2,6 +2,7 @@
 
 Run: uvicorn app:app --host 127.0.0.1 --port 8484   (personal/scripts/kiosk.sh)
 """
+import random
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -11,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 import fixes
+import quiz
 import scheduler
 import sessions
 import store
@@ -104,6 +106,86 @@ def session_flashcards_finish(session_id: str, f: FinishIn):
         raise HTTPException(404, "This session isn't active, so the summary wasn't saved.")
     summary = sessions.summarize(session_id, "flashcards", [a.model_dump() for a in f.results],
                                  [r.model_dump() for r in f.removed], f.minutes, f.deck)
+    sessions.write_summary(summary)
+    return summary
+
+
+@app.get("/s/{session_id}/quiz")
+def session_quiz_page(request: Request, session_id: str):
+    return templates.TemplateResponse(request, "quiz.html", {
+        "title": "Quiz", "page": "session",
+        "deck_src": f"/api/s/{session_id}/quiz", "session_id": session_id})
+
+
+def quiz_spec(session_id: str) -> dict:
+    try:
+        return sessions.load_spec(session_id, "quiz")
+    except sessions.NoSession:
+        raise HTTPException(404, "This session isn't active. Ask Claude for a new link.")
+
+
+@app.get("/api/s/{session_id}/quiz")
+def session_quiz(session_id: str):
+    return quiz.build_deck(quiz_spec(session_id), session_id)
+
+
+class QuizAnswer(BaseModel):
+    course: str
+    topic: str
+    id: str
+    choice: int | None = None                                  # multiple choice: original option index
+    values: dict[str, float] | None = None                     # practice problem: the values shown
+    answer: str | None = Field(default=None, max_length=60)
+    gave_up: bool = False
+    time_sec: int | None = Field(default=None, ge=0, le=24 * 3600)
+
+
+def quiz_item(session_id: str, course: str, topic: str, qid: str) -> dict:
+    spec = quiz_spec(session_id)
+    if course != spec["course"]:
+        raise HTTPException(404, "not in this session")
+    try:
+        return quiz.find_item(course, topic, qid)
+    except KeyError:
+        raise HTTPException(404, "question not found")
+
+
+@app.post("/api/s/{session_id}/quiz/answer")
+def session_quiz_answer(session_id: str, a: QuizAnswer):
+    item = quiz_item(session_id, a.course, a.topic, a.id)
+    try:
+        return quiz.check(item, session_id, a.model_dump())
+    except ValueError as e:
+        raise HTTPException(422, f"Couldn't read that answer: {e}")
+    except quiz.Broken as e:
+        raise HTTPException(422, f"This problem is broken ({e}). Skip it.")
+
+
+@app.get("/api/s/{session_id}/quiz/{course}/{topic}/{qid}/another")
+def session_quiz_another(session_id: str, course: str, topic: str, qid: str):
+    """The same practice problem with new random values."""
+    item = quiz_item(session_id, course, topic, qid)
+    if item["type"] != "practice_problem":
+        raise HTTPException(422, "not a practice problem")
+    try:
+        return quiz.public_problem(item, random.Random())
+    except quiz.Broken as e:
+        raise HTTPException(422, f"This problem is broken ({e}).")
+
+
+class QuizFinish(BaseModel):
+    minutes: float = Field(ge=0, le=24 * 60)
+    deck: int = Field(ge=0)
+    broken: list[str] = Field(default_factory=list, max_length=1000)
+
+
+@app.post("/api/s/{session_id}/quiz/finish")
+def session_quiz_finish(session_id: str, f: QuizFinish):
+    try:
+        spec = sessions.load_spec(session_id, "quiz")
+    except sessions.NoSession:
+        raise HTTPException(404, "This session isn't active, so the summary wasn't saved.")
+    summary = quiz.summarize(session_id, spec, f.minutes, f.deck, f.broken)
     sessions.write_summary(summary)
     return summary
 

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block scripts %}<script defer src="/static/quiz.js"></script>{% endblock %}
+
+{% block header %}
+  <div class="progress" role="progressbar" aria-label="Questions done" aria-valuemin="0"><div id="progress-fill"></div></div>
+  <div class="bar-row">
+    <span id="where" class="where"></span>
+    <span id="count" class="count"></span>
+    <button id="end-btn" class="end-btn" type="button" hidden>Finish</button>
+  </div>
+{% endblock %}
+
+{% block main %}
+  <div id="deck" data-src="{{ deck_src }}" data-session="{{ session_id }}" hidden></div>
+  <section id="loading" class="screen"><p class="muted">Loading your quiz…</p></section>
+
+  <section id="item" class="screen" hidden>
+    <div class="card">
+      <p id="kind" class="kind"></p>
+      <p id="question" class="text"></p>
+      <p id="source" class="muted small"></p>
+    </div>
+
+    <!-- Multiple choice -->
+    <div id="mc" class="options" hidden></div>
+
+    <!-- Practice problem -->
+    <form id="problem" class="answer-form" hidden autocomplete="off">
+      <label for="answer">Your answer <span class="muted">(within 1% counts; 3/4 or 1.2e-3 work too)</span></label>
+      <div class="answer-row">
+        <input id="answer" type="text" inputmode="decimal" enterkeyhint="go" spellcheck="false" autocapitalize="off">
+        <button id="check-btn" type="submit" class="primary">Check</button>
+      </div>
+      <button id="giveup-btn" type="button" class="plain">Show solution <kbd>S</kbd></button>
+    </form>
+
+    <div id="result" class="result" hidden>
+      <p id="verdict" class="verdict"></p>
+      <div id="explanation" class="text-block"></div>
+      <div id="solution" class="solution" hidden>
+        <h2>Solution</h2>
+        <ol id="steps" class="steps"></ol>
+        <div id="worked" class="worked"></div>
+      </div>
+    </div>
+    <p id="toast" class="toast" hidden></p>
+
+    <div id="after" class="controls" hidden>
+      <div class="row" id="after-row">
+        <button id="steps-btn" type="button" hidden>Show solution steps <kbd>S</kbd></button>
+        <button id="another-btn" type="button" hidden>Another one like this <kbd>A</kbd></button>
+        <button id="next-btn" type="button" class="primary">Next <kbd>Enter</kbd></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="finish" class="screen" hidden>
+    <h1 id="finish-title">Done</h1>
+    <div class="stats">
+      <div><b id="s-answered">0</b><span>questions</span></div>
+      <div><b id="s-accuracy">–</b><span>right first time</span></div>
+      <div><b id="s-minutes">0</b><span>minutes</span></div>
+    </div>
+    <p id="s-types" class="muted"></p>
+    <div id="weak-wrap" hidden><h2>Missed</h2><ul id="weak" class="list"></ul></div>
+    <p id="broken-note" class="muted small" hidden></p>
+    <p id="saved" class="muted" hidden>Saved. Tell Claude you're done.</p>
+    <p id="save-err" class="error" hidden></p>
+    <button id="resave-btn" class="wide" hidden>Try saving again</button>
+  </section>
+
+  <section id="error" class="screen" hidden>
+    <p id="error-msg" class="error"></p>
+    <button id="retry-btn" class="wide">Retry</button>
+  </section>
+{% endblock %}
