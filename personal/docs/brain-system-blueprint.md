@@ -1111,13 +1111,25 @@ Also in your fork's `DISPATCHER.md` skill table: remove "plan my week" from `/we
       "Bash(convert:*)",
       "Bash(yt-dlp:*)",
       "Bash(curl -s http://localhost:11434/*:*)",
-      "Bash(curl -s http://localhost:8484/*:*)"
+      "Bash(curl -s http://localhost:8484/*:*)",
+      "Bash(notebooklm source add *)",
+      "Bash(notebooklm create *)",
+      "Bash(pdfinfo *)",
+      "Bash(identify *)",
+      "Bash(jq *)",
+      "Bash(date *)",
+      "Bash(mkdir -p *)",
+      "Bash(mv drive-inbox/*)",
+      "Bash(cp drive-inbox/*)",
+      "Bash(rm drive-inbox/*)",
+      "Bash(rm -r drive-inbox/*)",
+      "Bash(rm Meta/ingestion-*)"
     ]
   }
 }
 ```
 
-Cron-invoked `claude --print` runs can't answer permission prompts, so anything a batch job needs must be on this list (or passed per-run with `--allowedTools`). Start narrow and add entries as batch logs show denials.
+Cron-invoked `claude --print` runs can't answer permission prompts, so anything a batch job needs must be on this list (or passed per-run with `--allowedTools`). Start narrow and add entries as batch logs show denials. The ingestion entries (1.1) assume the agent runs commands from the vault root with relative paths, no `cd`: file moves and deletes are limited to `drive-inbox/` and `Meta/ingestion-*`, and NotebookLM to `source add` and `create`.
 
 **Why `"model": "sonnet"` is in there:** Claude Code on the Pro plan now defaults to Opus 5.5. Every Remote Control message and every session you open would otherwise run on the most expensive model. This line makes Sonnet 5.5 the vault's default; cron jobs still pick their own with `--model`.
 

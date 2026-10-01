@@ -14,13 +14,15 @@ model: mid
 
 Resolve `{{inbox}}`, `{{projects}}`, `{{areas}}`, `{{resources}}`, `{{meta}}` from `Meta/vault-map.md` (this literal path); if absent use `00-Inbox`, `01-Projects`, `02-Areas`, `03-Resources`, `Meta`. Scripts: `My-Brain-Is-Full-Crew/personal/scripts/`. Today: `date +%F`.
 
+Run Bash from the vault root with relative paths: no `cd`, no `python` prefix (scripts are executable), one command per call. Unattended runs only allow commands in that form.
+
 ## Which files
 
 The paths you were given; else every line of `{{meta}}/ingestion-queue.txt`; else every file in `drive-inbox/` that isn't a sidecar (`*.extracted.md`, `*.meta.json`, `*_marker/`, `*_pages/`).
 
 ## 1. Pre-process
 
-Any file without `<file>.meta.json`: write their paths to a temp list and run `local-preprocess.py --queue <list>` once for all of them. Audio (.m4a/.mp3/.wav): skip; report it for `/transcribe`.
+Any file without `<file>.meta.json`: write their paths to `{{meta}}/ingestion-preprocess.txt` and run `local-preprocess.py --queue {{meta}}/ingestion-preprocess.txt` once for all of them, then delete the list. Audio (.m4a/.mp3/.wav): skip; report it for `/transcribe`.
 
 ## 2. Read meta first
 
