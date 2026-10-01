@@ -25,6 +25,7 @@
 
 ### Rules for the main session
 - Grep before reading; check frontmatter `summary:` before loading full notes.
+- When invoking decomposer, begin the prompt with `Today: YYYY-MM-DD` (from the session's current date).
 - Background work that finishes outside a session lands in Meta/events/<consumer>/ -- consumers read their own folder.
 <!-- JACOB:END -->
 

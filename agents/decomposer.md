@@ -15,7 +15,7 @@ Resolve `{{meta}}` and `{{projects}}` from `Meta/vault-map.md` (this literal pat
 
 ## Input
 
-An assignment note or file path (the invocation names it), plus today's date. You have no clock: use the date given in the prompt; if none was given, ask once.
+An assignment note or file path (the invocation names it), plus today's date as `Today: YYYY-MM-DD`. You have no clock and no shell. Use only that date. If it is missing, stop and reply `Missing date: re-invoke with Today: YYYY-MM-DD`; never guess or infer it from file dates.
 
 Load only the assignment description and rubric. For a PDF or image, read the `.extracted.md` next to it first; read the original only if that is missing. Never load course materials.
 
