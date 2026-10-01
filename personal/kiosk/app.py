@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 import fixes
 import scheduler
+import sessions
 import store
 
 HERE = Path(__file__).parent
@@ -53,6 +54,58 @@ def cards_page(request: Request):
 @app.get("/trash")
 def trash_page(request: Request):
     return page(request, "trash", "Trash")
+
+
+# ---------- study sessions (deck spec written by the study skill) ----------
+
+@app.get("/s/{session_id}/flashcards")
+def session_flashcards_page(request: Request, session_id: str):
+    return templates.TemplateResponse(request, "review.html", {
+        "title": "Flashcards", "page": "session",
+        "deck_src": f"/api/s/{session_id}/flashcards", "session_id": session_id})
+
+
+@app.get("/api/s/{session_id}/flashcards")
+def session_flashcards(session_id: str):
+    try:
+        deck = sessions.build_deck(sessions.load_spec(session_id, "flashcards"))
+    except sessions.NoSession:
+        raise HTTPException(404, "This session isn't active. Ask Claude for a new link.")
+    deck["cards"] = [public(c) for c in deck["cards"]]
+    return deck
+
+
+class Attempt(BaseModel):
+    course: str
+    topic: str
+    id: str
+    rating: str = Field(pattern="^(again|hard|good|easy)$")
+    confidence: int = Field(ge=1, le=5)
+
+
+class Removed(BaseModel):
+    course: str
+    topic: str
+    id: str
+
+
+class FinishIn(BaseModel):
+    results: list[Attempt] = Field(default_factory=list, max_length=5000)
+    removed: list[Removed] = Field(default_factory=list, max_length=1000)
+    minutes: float = Field(ge=0, le=24 * 60)
+    deck: int = Field(ge=0)
+
+
+@app.post("/api/s/{session_id}/flashcards/finish")
+def session_flashcards_finish(session_id: str, f: FinishIn):
+    try:
+        sessions.load_spec(session_id, "flashcards")
+    except sessions.NoSession:
+        raise HTTPException(404, "This session isn't active, so the summary wasn't saved.")
+    summary = sessions.summarize(session_id, "flashcards", [a.model_dump() for a in f.results],
+                                 [r.model_dump() for r in f.removed], f.minutes, f.deck)
+    sessions.write_summary(summary)
+    return summary
 
 
 @app.get("/api/review/due")

@@ -1,6 +1,8 @@
 // /review: every due card across all courses. Confidence (1-5) before the reveal,
 // Again/Hard/Good/Easy after it. The server writes review-state after every card.
 // A card rated Again comes back a few cards later, until you get it.
+// /s/<id>/flashcards runs the same page on the study session's deck and, on Finish,
+// saves a summary for the study skill. Progress survives a reload (localStorage).
 (() => {
   const $ = (id) => document.getElementById(id);
   const { key, math, setText } = CardFix;
@@ -9,7 +11,12 @@
   const REQUEUE_GAP = 3;   // other cards shown before a missed one returns
 
   let deck = [], i = 0, phase = "loading", confidence = null, shownAt = 0, busy = false;
-  let started = 0, results = [], removed = new Set(), retry = null;
+  let started = 0, results = [], removed = new Map(), retry = null;
+  const SRC = $("deck").dataset.src;
+  const SESSION = $("deck").dataset.session || null;
+  const STORE_KEY = SESSION && `kiosk-session-${SESSION}`;
+  const endBtn = $("end-btn");
+  let names = {}, deckSize = 0;
 
   const setImage = (el, card, path) => {
     if (path) {
@@ -39,14 +46,69 @@
     show("loading");
     $("where").textContent = "";
     try {
-      const res = await fetch("/api/review/due", { cache: "no-store" });
-      if (!res.ok) throw new Error(`Server said ${res.status}`);
-      deck = (await res.json()).cards;
+      const res = await fetch(SRC, { cache: "no-store" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Server said ${res.status}`);
+      }
+      const data = await res.json();
+      deck = data.cards;
+      names = data.topic_names || {};
     } catch (e) {
       return fail(`Couldn't load cards: ${e.message}`, load);
     }
-    i = 0; results = []; removed = new Set(); started = Date.now();
+    i = 0; results = []; removed = new Map(); started = Date.now(); deckSize = deck.length;
+    if (SESSION) restore();
     next();
+  }
+
+  // ---------- session progress (survives a reload) ----------
+  function restore() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch { /* private mode */ }
+    if (!saved) return;
+    results = saved.results || [];
+    removed = new Map(saved.removed || []);
+    started = saved.started || started;
+    deckSize = Math.max(deckSize, saved.deckSize || 0);
+    // Cards already answered (last rating not Again) or removed don't come back.
+    const last = new Map(results.map((r) => [key(r.card), r.rating]));
+    deck = deck.filter((c) => !removed.has(key(c)) && (last.get(key(c)) ?? "again") === "again");
+  }
+
+  function persist() {
+    if (!SESSION) return;
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({ started, deckSize, results, removed: [...removed] }));
+    } catch { /* private mode: progress just won't survive a reload */ }
+  }
+
+  async function saveSummary() {
+    ["saved", "save-err", "resave-btn"].forEach((id) => ($(id).hidden = true));
+    try {
+      const res = await fetch(`${SRC}/finish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          results: results.map((r) => ({
+            course: r.card.course, topic: r.card.topic, id: r.card.id,
+            rating: r.rating, confidence: r.confidence,
+          })),
+          removed: [...removed.values()],
+          minutes: (Date.now() - started) / 60000,
+          deck: deckSize,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Server said ${res.status}`);
+      }
+      $("saved").hidden = false;
+    } catch (e) {
+      $("save-err").textContent = `Summary not saved: ${e.message}`;
+      $("save-err").hidden = false;
+      $("resave-btn").hidden = false;
+    }
   }
 
   const next = () => (i < deck.length ? render() : finish());
@@ -63,7 +125,7 @@
     const card = deck[i];
     phase = "confidence"; confidence = null; busy = false;
     const again = results.some((r) => key(r.card) === key(card));
-    $("where").textContent = `${card.course} · ${card.topic}${again ? " · again" : card.is_new ? " · new" : ""}`;
+    $("where").textContent = `${card.course} · ${names[card.topic] || card.topic}${again ? " · again" : card.is_new ? " · new" : ""}`;
     showText(card);
     $("answer-wrap").hidden = true;
     $("confidence").hidden = false;
@@ -71,6 +133,7 @@
     $("toast").hidden = true;
     document.querySelectorAll("#card button").forEach((b) => (b.disabled = false));
     progress();
+    if (endBtn) endBtn.hidden = false;
     show("card");
     window.scrollTo(0, 0);
     shownAt = Date.now();
@@ -103,6 +166,7 @@
       if (!res.ok) throw new Error(`Server said ${res.status}`);
       const out = await res.json();
       results.push({ card, rating, applied: out.applied, confidence });
+      persist();
       if (out.applied !== rating) {
         // Right but unsure: the server counted it as Hard. Say so briefly before moving on.
         $("toast").textContent = "Low confidence, so this counts as Hard.";
@@ -128,7 +192,7 @@
       const li = document.createElement("li");
       li.textContent = r.card.question;
       const small = document.createElement("small");
-      small.textContent = `${r.card.course} · ${r.card.topic} · confidence ${r.confidence}`;
+      small.textContent = `${r.card.course} · ${names[r.card.topic] || r.card.topic} · confidence ${r.confidence}`;
       li.append(small);
       math(li);
       return li;
@@ -137,6 +201,7 @@
 
   function finish() {
     phase = "done";
+    if (endBtn) endBtn.hidden = true;
     $("progress-fill").style.width = "100%";
     $("count").textContent = "";
     $("where").textContent = "";
@@ -158,6 +223,7 @@
     $("weak-wrap").hidden = !missed.length;
     $("over-wrap").hidden = !over.length;
     show("finish");
+    if (SESSION) saveSummary();
   }
 
   // ---------- fixing bad cards ----------
@@ -165,7 +231,8 @@
 
   const hooks = {
     onRemoved(rows) {
-      rows.forEach((r) => removed.add(key(r)));
+      rows.forEach((r) => removed.set(key(r), { course: r.course, topic: r.topic, id: r.id }));
+      persist();
       const gone = new Set(rows.map(key));
       deck = deck.slice(0, i).concat(deck.slice(i).filter((c) => !gone.has(key(c))));
       next();
@@ -173,6 +240,7 @@
     onRestored(rows) {
       // Put the card back in front of you, starting over at the confidence step.
       rows.forEach((r) => removed.delete(key(r)));
+      persist();
       deck.splice(i, 0, ...rows.filter((r) => r.status === "active" || r.status === "edited"));
       next();
     },
@@ -194,7 +262,9 @@
     else if (b.dataset.rate) rate(b.dataset.rate);
     else if (b.id === "again-btn") load();
     else if (b.id === "retry-btn" && retry) retry();
+    else if (b.id === "resave-btn") saveSummary();
   });
+  if (endBtn) endBtn.addEventListener("click", () => phase !== "done" && finish());
 
   // Keyboard (iPad/desktop): 1-5 confidence, then 1-4 = Again/Hard/Good/Easy.
   document.addEventListener("keydown", (e) => {

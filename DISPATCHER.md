@@ -10,6 +10,7 @@
 ### Extra skills (same priority as the skill table)
 | Skill | Triggers |
 |-------|----------|
+| /study | "I want to study [topic]", "study time", "review [course]", "quiz me on", "teach me", "exam prep"; "done"/"finished" while a study session is running in this conversation (before distributor) |
 | /study-gen | after ingestion returns `### Suggested next skill` with study-gen: run /study-gen on those notes (not part of the 3-agent limit); 3 AM batch |
 
 ### Extra agents -- check THESE triggers BEFORE the core agent table
@@ -20,13 +21,14 @@
 | decomposer | "break down this assignment", "decompose", new assignment files |
 
 ### Extra tools that exist in this project
-- CLI: gws, rclone, marker_single, surya_detect, yt-dlp, python scripts in My-Brain-Is-Full-Crew/personal/scripts/, Ollama API (http://localhost:11434)
+- CLI: gws, rclone, marker_single, surya_detect, yt-dlp, python scripts in My-Brain-Is-Full-Crew/personal/scripts/, Ollama API (http://localhost:11434), the Kiosk (http://localhost:8484)
 - Installed third-party skills: notebooklm (notebooklm-py), deep-research, learn-this, youtube-transcript, article-extractor, unblock-action, create-ideas
 
 ### Rules for the main session
 - Grep before reading; check frontmatter `summary:` before loading full notes.
 - When invoking decomposer, begin the prompt with `Today: YYYY-MM-DD` (from the session's current date).
 - Background work that finishes outside a session lands in Meta/events/<consumer>/ -- consumers read their own folder.
+- Study reviews, quizzes and dashboards happen in the Kiosk; send links, don't render them in chat.
 <!-- JACOB:END -->
 
 Your crew consists of **14 skills** (in `.platform/skills/`) and **8 core agents** (in `.platform/agents/`). Your agent platform auto-loads both at session start.

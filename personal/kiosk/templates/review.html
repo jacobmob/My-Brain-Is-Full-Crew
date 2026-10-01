@@ -6,11 +6,13 @@
   <div class="bar-row">
     <span id="where" class="where"></span>
     <span id="count" class="count"></span>
+    {% if session_id %}<button id="end-btn" class="end-btn" type="button" hidden>Finish</button>{% endif %}
   </div>
 {% endblock %}
 
 {% block main %}
-  <section id="loading" class="screen"><p class="muted">Loading due cards…</p></section>
+  <div id="deck" data-src="{{ deck_src or '/api/review/due' }}" data-session="{{ session_id or '' }}" hidden></div>
+  <section id="loading" class="screen"><p class="muted">Loading {{ 'your deck' if session_id else 'due cards' }}…</p></section>
 
   <section id="card" class="screen" hidden>
     <div class="card">
@@ -54,7 +56,13 @@
     </div>
     <div id="weak-wrap" hidden><h2>Missed</h2><ul id="weak" class="list"></ul></div>
     <div id="over-wrap" hidden><h2>Overconfident</h2><p class="muted small">Sure (4–5) but missed.</p><ul id="over" class="list"></ul></div>
+    {% if session_id %}
+    <p id="saved" class="muted" hidden>Saved. Tell Claude you're done.</p>
+    <p id="save-err" class="error" hidden></p>
+    <button id="resave-btn" class="wide" hidden>Try saving again</button>
+    {% else %}
     <button id="again-btn" class="wide">Check for more due cards</button>
+    {% endif %}
   </section>
 
   <section id="error" class="screen" hidden>
