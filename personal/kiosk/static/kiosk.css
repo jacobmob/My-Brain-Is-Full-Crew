@@ -1,0 +1,73 @@
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --text: #16191d; --muted: #616a75; --border: #d9dde3;
+  --accent: #3563d9; --again: #c93a3a; --hard: #c27a12; --good: #2a8a4a; --easy: #2f6fd6;
+  --btn: #eceff3; --btn-text: #16191d;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --surface: #1a1e24; --text: #e7eaee; --muted: #9aa3ad; --border: #2c323a;
+    --accent: #7aa2ff; --again: #e25b5b; --hard: #e09a34; --good: #43b56a; --easy: #5b93f0;
+    --btn: #262c34; --btn-text: #e7eaee;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 18px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100dvh; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; }
+
+.bar { position: sticky; top: 0; background: var(--bg); padding: 10px 16px 6px; z-index: 1; }
+.progress { height: 6px; border-radius: 3px; background: var(--btn); overflow: hidden; }
+#progress-fill { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+.bar-row { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font-size: 14px; color: var(--muted); }
+.where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { font-variant-numeric: tabular-nums; flex: none; }
+
+main { flex: 1; display: flex; width: 100%; max-width: 640px; margin: 0 auto; padding: 8px 16px 16px; }
+.screen { flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.screen[hidden], [hidden] { display: none !important; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; overflow-wrap: anywhere; }
+.card .text { margin: 0; font-size: 20px; white-space: pre-wrap; }
+.card img { display: block; max-width: 100%; height: auto; margin-top: 14px; border-radius: 8px; background: #fff; }
+.card hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
+.card .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+
+/* Controls sit at the bottom, in thumb reach */
+.controls { margin-top: auto; }
+.prompt { margin: 0 0 8px; color: var(--muted); font-size: 15px; text-align: center; }
+.row { display: grid; gap: 8px; }
+.row.five { grid-template-columns: repeat(5, 1fr); }
+.row.four { grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 520px) { .row.four { grid-template-columns: repeat(4, 1fr); } }
+.row button, button.wide {
+  min-height: 60px; border: 0; border-radius: 12px; background: var(--btn); color: var(--btn-text);
+  font-size: 20px; font-weight: 600; cursor: pointer; touch-action: manipulation;
+}
+.row button:active, button.wide:active { transform: scale(.97); }
+.row button:disabled { opacity: .5; }
+.row-labels { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); padding: 4px 2px 0; }
+button.again { background: var(--again); color: #fff; }
+button.hard  { background: var(--hard);  color: #fff; }
+button.good  { background: var(--good);  color: #fff; }
+button.easy  { background: var(--easy);  color: #fff; }
+button.wide { width: 100%; background: var(--accent); color: #fff; margin-top: auto; }
+
+.toast { margin: 0; text-align: center; font-size: 14px; color: var(--hard); }
+.muted { color: var(--muted); }
+.small { font-size: 14px; margin: 12px 0 0; }
+.error { color: var(--again); }
+
+h1 { margin: 12px 0 0; font-size: 28px; }
+h2 { margin: 8px 0 4px; font-size: 18px; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stats div { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; text-align: center; }
+.stats b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+.stats span { font-size: 13px; color: var(--muted); }
+.list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.list li { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 15px; overflow-wrap: anywhere; }
+.list li small { display: block; color: var(--muted); font-size: 12px; }
