@@ -1,0 +1,11 @@
+# Build rules for this fork
+- Spec: personal/docs/brain-system-blueprint.md. Section numbers (e.g. 1.3) refer to it. Read only the section you need: grep for its heading first.
+- Work in the fork My-Brain-Is-Full-Crew on branch jacob. Never edit the vault's .claude/ or CLAUDE.md directly; they are installed from the fork.
+- Agents: agents/<name>.md with frontmatter `capabilities:` and `model: low|mid|high`. Add a registry row between the MBIFC:CUSTOM_AGENTS markers in references/agents-registry.md and mirror it in references/agents.md.
+- Skills: skills/<name>/SKILL.md. One-shot skills use `context: fork` with `model:` and `effort: low`.
+- Triggers: add rows to the JACOB block in DISPATCHER.md. Never edit core agents or skills outside marked <!-- JACOB --> lines.
+- Folder paths in prompts use vault-role tokens ({{inbox}}, {{projects}}, {{resources}}, {{meta}}, {{daily}}), never hard-coded names.
+- Scripts go in personal/scripts/. Python scripts start with #!/home/jacob/.venvs/brain/bin/python; install packages with uv pip install --python ~/.venvs/brain. Scripts run by cron set PATH to include ~/.local/bin and ~/.venvs/brain/bin, and cd into ~/brain-vault before calling claude.
+- Keep each agent or skill prompt under about 500 words: behavior only.
+- Finish every stage: commit on jacob, push, run bash scripts/updateme.sh --platform claude-code from the fork, then run the stage's test with me.
+- Ask before deleting or moving any of my notes.
