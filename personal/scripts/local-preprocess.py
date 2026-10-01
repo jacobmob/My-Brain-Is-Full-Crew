@@ -3,7 +3,7 @@
 # For each queued file: extract text (Marker for documents, the local vision
 # model for images), classify locally, and write <file>.extracted.md + <file>.meta.json
 
-import sys, json, subprocess, shutil, tempfile
+import sys, re, json, subprocess, shutil, tempfile
 from pathlib import Path
 import ollama
 
@@ -73,6 +73,7 @@ def convert_documents(paths):
 def read_image(path):
     msg = {"role": "user", "content": READ_PROMPT, "images": [str(path)]}
     transcript = ollama.chat(model=VISION, messages=[msg], options=OPTIONS)["message"]["content"]
+    transcript = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n?```$", r"\1", transcript.strip(), flags=re.S)
     r = ask(VISION, TYPE_PROMPT, TYPE_SCHEMA, image=str(path))
     return transcript, {"text_type": r["text_type"], "has_diagram": r["has_diagram"],
                         "extracted_images": []}
@@ -138,8 +139,9 @@ def preprocess(path, courses, converted, routes):
     else:
         text, info = path.read_text(errors="ignore"), {"text_type": "typed", "has_diagram": False,
                                                         "extracted_images": []}
-    c = ask(TEXT, CLASSIFY_PROMPT.format(courses=courses, name=path.name, text=text[:4000]),
-            CLASSIFY_SCHEMA)
+    schema = json.loads(json.dumps(CLASSIFY_SCHEMA))
+    schema["properties"]["course"] = {"enum": [*courses, None]}  # only real course folders, or none
+    c = ask(TEXT, CLASSIFY_PROMPT.format(courses=courses, name=path.name, text=text[:4000]), schema)
     Path(f"{path}.extracted.md").write_text(text)
     meta = {"original_file": str(path), "extracted_text_path": f"{path}.extracted.md",
             **info, **({"pdf_route": routes[path]} if path in routes else {}), **c, "unsure_words": text.count("[?]"),
