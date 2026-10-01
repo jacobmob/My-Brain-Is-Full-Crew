@@ -21,6 +21,7 @@ The registry is designed to grow: custom agents (see Issue #12) are added as new
 <!-- MBIFC:CUSTOM_AGENTS_START -->
 | distributor | Task Picker | Reads task-note frontmatter, filters by time and energy, ranks and returns one task; handles "done" and unblocks dependent tasks; consumes `Meta/events/distributor/`. Bash access. | "what should I do", "I have N minutes", "energy N", "done", "next task" | One task with context; updated task status, `Meta/task-timing.json` | active |
 | ingestion | Upload Ingestion | Reads `.meta.json` from local pre-processing (runs `local-preprocess.py` if missing), classifies with the fallback chain, routes uploads (courses, campaigns, projects), extracts and strips diagrams, fills formula sheets, uploads course material to NotebookLM. Bash access. | "process my uploads", "process the queue", batch file lists from `drive-inbox/` | Filed vault notes, `03-Resources/study/<course>/diagrams/` + `formulas/`, NotebookLM sources; suggests decomposer for assignments | active |
+| decomposer | Assignment Decomposer | Splits an assignment into dependency-ordered task notes with effort, time estimate and backward-planned due dates; marks the first available task ready. No Bash. | "break down this assignment", "decompose", new assignment files from ingestion | Task notes in `{{projects}}/<course>/tasks/` (frontmatter with `parent_assignment`, `depends_on`), parent assignment note, `Meta/events/distributor/` new-tasks event when unattended | active |
 <!-- MBIFC:CUSTOM_AGENTS_END -->
 
 ---

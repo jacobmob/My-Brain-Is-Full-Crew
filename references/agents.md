@@ -162,6 +162,9 @@ Picks the single best next task (time and energy filtered, ranked by priority, d
 ### ingestion
 Processes uploads from `drive-inbox/` and `Meta/ingestion-queue.txt`. Reads each file's `.meta.json` from local pre-processing first (running `local-preprocess.py` when it is missing), classifies with the Smart Classification Fallback Chain and `Meta/image-categories.json`, honors `Meta/pending-requests.md`, routes by classification (rpg-content by campaign aliases), extracts and strips diagrams, fills per-topic formula sheets, and uploads course material to NotebookLM via `Meta/notebooklm-notebooks.json`. Hands assignments to the decomposer. Capabilities: read, write, edit, bash. Model: mid.
 
+### decomposer
+Splits an assignment (note, or PDF via its `.extracted.md`) into dependency-ordered task notes with `effort`, `time_est`, `parent_assignment`, `depends_on` and backward-planned due dates, plus a parent assignment note. Marks tasks with no dependencies `ready`, the rest `blocked`. Writes a `new-tasks` event to `Meta/events/distributor/` when unattended. Capabilities: read, write, edit. Model: mid.
+
 <!-- MBIFC:CUSTOM_AGENTS_END -->
 
 ### How Custom Agents Coordinate

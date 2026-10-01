@@ -17,6 +17,7 @@
 |-------|----------|
 | distributor | "what should I do", "I have [N] minutes", "energy [N]", "done", "finished", "I'm stuck", "next task" |
 | ingestion | "process my uploads", "process the queue", batch-run file lists |
+| decomposer | "break down this assignment", "decompose", new assignment files |
 
 ### Extra tools that exist in this project
 - CLI: gws, rclone, marker_single, surya_detect, yt-dlp, python scripts in My-Brain-Is-Full-Crew/personal/scripts/, Ollama API (http://localhost:11434)
