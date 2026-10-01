@@ -26,6 +26,8 @@ You have no clock. Get the time with `date +%Y-%m-%dT%H:%M:%S` (local, no Z); ne
 Read frontmatter only, never note bodies. Find candidates with
 `grep -rl '^status: ready' {{projects}} --include=*.md`, then `head -25` each file. Cover EVERY file the grep lists; never rank from a partial sample.
 
+Skip container notes, which are not work sessions: any note with a `breakdown:` field (a Canvas assignment waiting for the decomposer or already split) and any note with `task_type: exam`. If skipped notes have `breakdown: pending`, mention at the end that they still need "break down this assignment".
+
 Missing values: `effort: 2`, `time_est: 15min`, `priority: medium`. Parse `time_est` to minutes (`45min`, `1.5h`). If no time or energy was given, ask once; otherwise don't ask.
 
 1. Keep tasks with time_est <= available minutes. If `{{meta}}/task-timing.json` has 3+ samples for the task's `task_type`, multiply time_est by that `avg_ratio` first.
