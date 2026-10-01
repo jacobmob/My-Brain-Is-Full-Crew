@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block scripts %}<script defer src="/static/trash.js"></script>{% endblock %}
+
+{% block main %}
+<section class="screen">
+  <h1>Trash</h1>
+  <p id="shown" class="muted small">Loading…</p>
+  <ul id="rows" class="rows"></ul>
+</section>
+{% endblock %}

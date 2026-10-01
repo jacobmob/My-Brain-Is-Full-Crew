@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block scripts %}<script defer src="/static/cards.js"></script>{% endblock %}
+
+{% block main %}
+<section class="screen">
+  <div class="filters">
+    <input id="q" type="search" placeholder="Search cards" aria-label="Search cards" autocomplete="off">
+    <div class="row two">
+      <select id="course" aria-label="Course"><option value="">All courses</option></select>
+      <select id="topic" aria-label="Topic"><option value="">All topics</option></select>
+    </div>
+    <div class="row two">
+      <select id="status" aria-label="Status">
+        <option value="">Active + flagged</option>
+        <option value="active">Active</option>
+        <option value="edited">Edited</option>
+        <option value="flagged">Flagged</option>
+      </select>
+      <select id="sort" aria-label="Sort">
+        <option value="topic">Course and topic</option>
+        <option value="failed">Most failed</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="list-head">
+    <label class="tick"><input type="checkbox" id="select-all"> <span id="shown">Loading…</span></label>
+  </div>
+  <ul id="rows" class="rows"></ul>
+  <p id="empty" class="muted" hidden>No cards match.</p>
+</section>
+
+<div id="bulkbar" class="bulkbar" hidden>
+  <span id="bulk-count"></span>
+  <button id="bulk-flag" type="button">Flag</button>
+  <button id="bulk-delete" type="button" class="danger">Delete</button>
+  <button id="bulk-clear" type="button" class="plain" aria-label="Clear selection">✕</button>
+</div>
+{% endblock %}

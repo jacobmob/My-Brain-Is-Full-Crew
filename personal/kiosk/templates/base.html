@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Kiosk · {{ title }}</title>
+<link rel="stylesheet" href="/static/katex/katex.min.css">
+<link rel="stylesheet" href="/static/kiosk.css">
+<script defer src="/static/katex/katex.min.js"></script>
+<script defer src="/static/katex/auto-render.min.js"></script>
+<script defer src="/static/cardfix.js"></script>
+{% block scripts %}{% endblock %}
+</head>
+<body>
+<header class="bar">
+  <nav class="nav">
+    <a href="/review"{% if page == "review" %} aria-current="page"{% endif %}>Review</a>
+    <a href="/cards"{% if page == "cards" %} aria-current="page"{% endif %}>Cards</a>
+    <a href="/trash"{% if page == "trash" %} aria-current="page"{% endif %}>Trash</a>
+  </nav>
+  {% block header %}{% endblock %}
+</header>
+
+<main id="app">{% block main %}{% endblock %}</main>
+
+<!-- Fixing bad cards (0.13): shared by every page -->
+<dialog id="fix-menu" class="sheet">
+  <p id="fix-menu-title" class="sheet-title"></p>
+  <button data-fix="edit">Edit <kbd>E</kbd></button>
+  <button data-fix="flag">Flag for rewrite <kbd>F</kbd></button>
+  <button data-fix="delete" class="danger">Delete <kbd>D</kbd></button>
+  <button data-fix="cancel" class="plain">Cancel</button>
+</dialog>
+
+<dialog id="fix-edit" class="sheet">
+  <form id="fix-edit-form">
+    <h2>Edit card</h2>
+    <label for="fix-q">Question</label>
+    <textarea id="fix-q" rows="3" required></textarea>
+    <div id="fix-q-prev" class="preview" aria-label="Question preview"></div>
+    <label for="fix-a">Answer</label>
+    <textarea id="fix-a" rows="3" required></textarea>
+    <div id="fix-a-prev" class="preview" aria-label="Answer preview"></div>
+    <label class="tick"><input type="checkbox" id="fix-reset"> Reset schedule <span class="muted">(I changed what the card asks)</span></label>
+    <p id="fix-edit-err" class="error" hidden></p>
+    <div class="row two">
+      <button type="button" data-close class="plain">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="fix-flag" class="sheet">
+  <form id="fix-flag-form">
+    <h2 id="fix-flag-title">Flag for rewrite</h2>
+    <p class="muted small">Hidden until the 3 AM batch rewrites it.</p>
+    <label for="fix-note">Note <span class="muted">(optional)</span></label>
+    <textarea id="fix-note" rows="3" placeholder="e.g. the answer uses the wrong time constant"></textarea>
+    <p id="fix-flag-err" class="error" hidden></p>
+    <div class="row two">
+      <button type="button" data-close class="plain">Cancel</button>
+      <button type="submit" class="primary">Flag</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="snackbar" class="snackbar" role="status" hidden>
+  <div class="snack-row"><span id="snack-msg"></span><button id="snack-undo" type="button">Undo</button></div>
+  <div id="snack-reasons" class="chips" hidden></div>
+</div>
+</body>
+</html>

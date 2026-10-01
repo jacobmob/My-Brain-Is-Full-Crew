@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
+import fixes
 import scheduler
 import store
 
@@ -35,9 +36,23 @@ def health():
     return {"ok": True}
 
 
+def page(request: Request, name: str, title: str):
+    return templates.TemplateResponse(request, f"{name}.html", {"title": title, "page": name})
+
+
 @app.get("/review")
 def review_page(request: Request):
-    return templates.TemplateResponse(request, "review.html", {"title": "Review"})
+    return page(request, "review", "Review")
+
+
+@app.get("/cards")
+def cards_page(request: Request):
+    return page(request, "cards", "Cards")
+
+
+@app.get("/trash")
+def trash_page(request: Request):
+    return page(request, "trash", "Trash")
 
 
 @app.get("/api/review/due")
@@ -100,3 +115,100 @@ def media(course: str, path: str):
     if not f.is_relative_to(base) or not f.is_file():
         raise HTTPException(404)
     return FileResponse(f)
+
+
+# ---------- fixing bad cards ----------
+
+def browse_row(card: dict, state: dict) -> dict:
+    entry = state.get("cards", {}).get(card["id"]) or {}
+    fs = store.card_fsrs(card, state)
+    e = card["_edit"] or {}
+    reviews = entry.get("times_reviewed", 0)
+    return public(card) | {
+        "is_new": fs is None, "status": card["status"],
+        "reason": e.get("reason"), "note": e.get("note"),
+        "changed": e.get("time") or e.get("date"),
+        "reviews": reviews, "fails": reviews - entry.get("times_correct", 0),
+        "due": fs["due"] if fs else None,
+    }
+
+
+def all_rows():
+    for course in store.courses():
+        for topic in store.topics(course):
+            state = store.load_review_state(course, topic)
+            for card in store.annotated_cards(course, topic):
+                yield browse_row(card, state)
+
+
+@app.get("/api/cards")
+def cards_list():
+    """Every card (deleted ones too, for /trash) with its status and review stats."""
+    return {"cards": list(all_rows()), "reasons": store.DELETE_REASONS,
+            "courses": {c: store.topics(c) for c in store.courses()}}
+
+
+@app.get("/api/trash")
+def trash_list():
+    rows = [r for r in all_rows() if r["status"] == "deleted"]
+    rows.sort(key=lambda r: store.parse_time(r["changed"]), reverse=True)
+    return {"cards": rows}
+
+
+class FixIn(BaseModel):
+    reason: str | None = None
+    note: str | None = Field(default=None, max_length=1000)
+    question: str | None = Field(default=None, max_length=5000)
+    answer: str | None = Field(default=None, max_length=5000)
+    reset_schedule: bool = False
+
+
+ACTIONS = {
+    "delete": lambda c, t, i, b: fixes.delete(c, t, i, b.reason),
+    "reason": lambda c, t, i, b: fixes.set_reason(c, t, i, b.reason),
+    "edit": lambda c, t, i, b: fixes.edit(c, t, i, b.question or "", b.answer or "", b.reset_schedule),
+    "flag": lambda c, t, i, b: fixes.flag(c, t, i, b.note),
+    "restore": lambda c, t, i, b: fixes.restore(c, t, i),
+}
+
+
+def run_fix(action, course, topic, cid, body):
+    if action not in ACTIONS:
+        raise HTTPException(404, "unknown action")
+    try:
+        ACTIONS[action](course, topic, cid, body)
+    except KeyError:
+        raise HTTPException(404, "card not found")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except fixes.Conflict as e:
+        raise HTTPException(409, str(e))
+    card = store.find_any_card(course, topic, cid)
+    return browse_row(card, store.load_review_state(course, topic))
+
+
+@app.post("/api/card/{course}/{topic}/{cid}/{action}")
+def card_fix(course: str, topic: str, cid: str, action: str, body: FixIn | None = None):
+    return run_fix(action, course, topic, cid, body or FixIn())
+
+
+class Ref(BaseModel):
+    course: str
+    topic: str
+    id: str
+
+
+class BulkIn(FixIn):
+    action: str = Field(pattern="^(delete|flag|restore)$")
+    items: list[Ref] = Field(min_length=1, max_length=1000)
+
+
+@app.post("/api/cards/bulk")
+def cards_bulk(b: BulkIn):
+    done, failed = [], []
+    for it in b.items:
+        try:
+            done.append(run_fix(b.action, it.course, it.topic, it.id, b))
+        except HTTPException as e:
+            failed.append({"course": it.course, "topic": it.topic, "id": it.id, "error": e.detail})
+    return {"cards": done, "failed": failed}

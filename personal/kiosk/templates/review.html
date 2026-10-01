@@ -1,33 +1,20 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Kiosk · {{ title }}</title>
-<link rel="stylesheet" href="/static/katex/katex.min.css">
-<link rel="stylesheet" href="/static/kiosk.css">
-<script defer src="/static/katex/katex.min.js"></script>
-<script defer src="/static/katex/auto-render.min.js"></script>
-<script defer src="/static/review.js"></script>
-</head>
-<body>
-<header class="bar">
+{% extends "base.html" %}
+{% block scripts %}<script defer src="/static/review.js"></script>{% endblock %}
+
+{% block header %}
   <div class="progress" role="progressbar" aria-label="Cards done" aria-valuemin="0"><div id="progress-fill"></div></div>
   <div class="bar-row">
     <span id="where" class="where"></span>
     <span id="count" class="count"></span>
   </div>
-</header>
+{% endblock %}
 
-<main id="app">
+{% block main %}
   <section id="loading" class="screen"><p class="muted">Loading due cards…</p></section>
 
   <section id="card" class="screen" hidden>
     <div class="card">
+      <button id="card-menu" class="menu-btn" type="button" aria-label="Fix this card">⋯</button>
       <p id="question" class="text"></p>
       <img id="q-image" alt="" hidden>
       <div id="answer-wrap" hidden>
@@ -61,8 +48,8 @@
   <section id="finish" class="screen" hidden>
     <h1 id="finish-title">Done</h1>
     <div class="stats">
-      <div><b id="s-reviewed">0</b><span>reviewed</span></div>
-      <div><b id="s-accuracy">–</b><span>correct</span></div>
+      <div><b id="s-reviewed">0</b><span>cards</span></div>
+      <div><b id="s-accuracy">–</b><span>right first time</span></div>
       <div><b id="s-minutes">0</b><span>minutes</span></div>
     </div>
     <div id="weak-wrap" hidden><h2>Missed</h2><ul id="weak" class="list"></ul></div>
@@ -74,6 +61,4 @@
     <p id="error-msg" class="error"></p>
     <button id="retry-btn" class="wide">Retry</button>
   </section>
-</main>
-</body>
-</html>
+{% endblock %}
