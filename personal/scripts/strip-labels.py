@@ -54,7 +54,7 @@ def main():
         draws += ["-draw", f"rectangle {x1},{y1} {x2},{y2}"]
     magick(src, "-fill", background, *draws, dst)
 
-    r = ollama.chat(model=VISION, format=CHECK_SCHEMA, options={"temperature": 0},
+    r = ollama.chat(model=VISION, format=CHECK_SCHEMA, think=False, options={"temperature": 0},
                     messages=[{"role": "user", "content": CHECK_PROMPT, "images": [str(dst)]}])
     check = json.loads(r["message"]["content"])
     if check["text_readable"] or not check["structure_intact"]:

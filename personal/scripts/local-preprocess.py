@@ -39,7 +39,7 @@ def ask(model, prompt, schema, image=None):
     msg = {"role": "user", "content": prompt}
     if image:
         msg["images"] = [image]
-    r = ollama.chat(model=model, messages=[msg], format=schema, options={"temperature": 0})
+    r = ollama.chat(model=model, messages=[msg], format=schema, think=False, options={"temperature": 0})
     return json.loads(r["message"]["content"])
 
 def convert_documents(paths):
