@@ -4,6 +4,18 @@
 
 ## ABSOLUTE CONSTRAINT: ONLY skills and agents from THIS project
 
+<!-- JACOB:START personal extensions -->
+## Personal extensions -- defined in this project, valid to use
+
+### Extra tools that exist in this project
+- CLI: gws, rclone, marker_single, surya_detect, yt-dlp, python scripts in My-Brain-Is-Full-Crew/personal/scripts/, Ollama API (http://localhost:11434)
+- Installed third-party skills: notebooklm (notebooklm-py), deep-research, learn-this, youtube-transcript, article-extractor, unblock-action, create-ideas
+
+### Rules for the main session
+- Grep before reading; check frontmatter `summary:` before loading full notes.
+- Background work that finishes outside a session lands in Meta/events/<consumer>/ -- consumers read their own folder.
+<!-- JACOB:END -->
+
 Your crew consists of **14 skills** (in `.platform/skills/`) and **8 core agents** (in `.platform/agents/`). Your agent platform auto-loads both at session start.
 
 The 8 core agents are:
