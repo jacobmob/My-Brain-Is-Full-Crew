@@ -20,6 +20,7 @@ The registry is designed to grow: custom agents (see Issue #12) are added as new
 | postman | Email & Calendar Intelligence | Read/archive/delete email (Gmail via `gws`, Hey.com via `hey`), search emails, read/create/update calendar events, draft and send replies. Uses Google Workspace CLI (`gws`) and/or Hey CLI (`hey`) via Bash, with MCP as read-only fallback. | Email triage, calendar queries, deadline tracking, meeting prep, VIP filtering | Email summaries saved as notes in `00-Inbox/`, calendar events created, deadline reports | active |
 <!-- MBIFC:CUSTOM_AGENTS_START -->
 | distributor | Task Picker | Reads task-note frontmatter, filters by time and energy, ranks and returns one task; handles "done" and unblocks dependent tasks; consumes `Meta/events/distributor/`. Bash access. | "what should I do", "I have N minutes", "energy N", "done", "next task" | One task with context; updated task status, `Meta/task-timing.json` | active |
+| ingestion | Upload Ingestion | Reads `.meta.json` from local pre-processing (runs `local-preprocess.py` if missing), classifies with the fallback chain, routes uploads (courses, campaigns, projects), extracts and strips diagrams, fills formula sheets, uploads course material to NotebookLM. Bash access. | "process my uploads", "process the queue", batch file lists from `drive-inbox/` | Filed vault notes, `03-Resources/study/<course>/diagrams/` + `formulas/`, NotebookLM sources; suggests decomposer for assignments | active |
 <!-- MBIFC:CUSTOM_AGENTS_END -->
 
 ---

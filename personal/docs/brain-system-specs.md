@@ -25,7 +25,7 @@
 | Permissions for unattended runs | Vault `.claude/settings.local.json` | Yes (never overwritten) |
 | Your data | The vault at `~/brain-vault` in the WSL2 Linux filesystem (Git-backed), never on `C:` | Yes |
 | Startup | Windows Task Scheduler runs `boot.sh` in WSL at every boot | Yes |
-| Local models | Ollama on Windows (`qwen3-vl:8b`, `qwen3.5:9b`, `qwen3-embedding:0.6b`); Python tools in the WSL venv `~/.venvs/brain` (Marker, Surya, Granite Speech, fsrs, Kokoro) | Yes |
+| Local models | Ollama on Windows (`qwen3-vl:8b-instruct`, `qwen3.5:9b`, `qwen3-embedding:0.6b`); Python tools in the WSL venv `~/.venvs/brain` (Marker, Surya, Granite Speech, fsrs, Kokoro) | Yes |
 | Default Claude model | `"model": "sonnet"` in `.claude/settings.local.json` (Sonnet 5.5); agents and forked skills pin Haiku 4.5 where the work is mechanical | Yes |
 
 ---
@@ -44,7 +44,7 @@
 | 6 | **Librarian** (upstream, Opus tier) | Vault health, duplicates, broken links | `/vault-audit` monthly |
 | 7 | **Transcriber** (upstream) | Turns transcripts into structured notes | `/transcribe` on local Granite Speech transcripts |
 | 8 | **Postman** (upstream) | Gmail + Calendar via `gws` CLI | `/email-triage` 2x daily, "check my email" |
-| 9 | **Ingestion** (ours) | Classifies uploads, routes them, uploads course material to NotebookLM, kicks off study generation | 3 AM batch; urgent files immediately; "process my uploads" |
+| 9 | **Ingestion** (ours) | Reads each upload's local `.meta.json` (runs `local-preprocess.py` if missing), routes it, extracts and strips diagrams, uploads course material to NotebookLM. Sonnet (`mid`). `/study-gen` runs after it on new academic notes | 3 AM batch; urgent files immediately; "process my uploads" |
 | 10 | **Decomposer** (ours) | Breaks assignments into subtasks with effort/time/dependency metadata | Assignment detected, or "break down this assignment" |
 | 11 | **Distributor** (ours) | Picks your next task from available time + energy | "what should I do", "done", "I'm stuck" |
 
@@ -87,7 +87,7 @@ notebooklm-py (teng-lin; CLI + skill) · Deep Research (sanjay3290/ai-skills, ru
 |---------|-------------|--------------|
 | **Kiosk** (FastAPI in WSL, port 8484) | `/review` (standalone FSRS-6 review), `/s/{id}/flashcards`, `/quiz`, `/derive`, `/diagrams`, `/cards` (browse, search, bulk fix), `/trash`, `/habits`, `/health`, `/today`, `/upload`. Delete, edit or flag any bad card, with undo. Writes review state, card edits and session summaries back to the vault | Phone/iPad/laptop at `https://<desktop>.<tailnet>.ts.net` (`tailscale serve` on Windows) |
 | **Remote Control keep-alive** | tmux loop running `claude remote-control --name "My Brain"`, restarts on exit; `boot.sh` starts it at boot | Claude app on phone/iPad |
-| **Ollama** (Windows app) | `qwen3-vl:8b` reads images and handwriting; `qwen3.5:9b` classifies and summarizes; `qwen3-embedding:0.6b` matches topics. All on the 4070 Ti, one at a time | Scripts in WSL via `localhost:11434` |
+| **Ollama** (Windows app) | `qwen3-vl:8b-instruct` reads images, handwriting and handwritten PDFs (the thinking `qwen3-vl:8b` looped on dense handwriting); `qwen3.5:9b` classifies and summarizes, with thinking off; `qwen3-embedding:0.6b` matches topics. All on the 4070 Ti, one at a time | Scripts in WSL via `localhost:11434` |
 
 ### Data pipelines and scripts (zero Claude tokens)
 
@@ -99,7 +99,7 @@ notebooklm-py (teng-lin; CLI + skill) · Deep Research (sanjay3290/ai-skills, ru
 | 26 | **Wake detection** (`check-wake.sh`) | Polls Oura every 10 min, fires the morning pipeline once | Cron, 5 AM-5 PM |
 | 27 | **Calendar sync** (`calendar-sync.sh`) | `gws` -> local calendar cache; flags exams and new invites as events | Cron, every 4 hours |
 | 28 | **Schedule push** (`push-schedule.sh`) | Diffs `today.json` vs `pushed.json`, pushes future changes to the "Brain Schedule" calendar | After every schedule change |
-| 29 | **Local pre-processing** | Marker (documents) + `qwen3-vl:8b` (images, handwriting) + `qwen3.5:9b` (classification) -> `.extracted.md` + `.meta.json` beside each upload | 3 AM batch; urgent files on arrival |
+| 29 | **Local pre-processing** | PDFs routed first (note-app Creator, text-layer density, then a page-1 vision check): typed documents -> Marker, handwritten PDFs -> rendered per page and read by `qwen3-vl:8b-instruct`; images -> `qwen3-vl:8b-instruct`; `qwen3.5:9b` classifies (course limited to real course folders) -> `.extracted.md` + `.meta.json` (with `pdf_route`, `page_images`) beside each upload | 3 AM batch; urgent files on arrival |
 | 30 | **Summary filler** (`summarize-missing.py`) | Adds `summary:` to long notes that lack one, via `qwen3.5:9b` | 3 AM batch |
 | 31 | **Drive pull + file watcher** | rclone moves new files from Drive into `drive-inbox/` every 2 min; inotifywait queues them or processes urgent ones immediately | cron + inotifywait |
 | 32 | **Event watcher** | Watches `Meta/events/scheduler/`, starts a reschedule | inotifywait |
@@ -153,7 +153,7 @@ THE FLOW:
 [File arrives in Drive]
   -> rclone pulls it into drive-inbox/ within 2 min (0 tokens)
   -> File watcher (0 tokens) queues it; local pre-processing (Marker, local
-     vision model) writes .extracted.md + .meta.json
+     vision model for images and handwritten PDFs) writes .extracted.md + .meta.json
   -> Urgent (due this week, tagged urgent)? Ingestion runs now. Otherwise 3 AM.
   -> Ingestion reads .meta.json first, classifies, routes:
        course folder            (academic notes, diagrams)
@@ -298,7 +298,7 @@ The weekly total (~255,000) is the real pressure point. Exam weeks with lots of 
 
 - Vault default pinned to Sonnet; Haiku for agents and forked skills doing mechanical work; Opus-tier upstream agents (Architect, Librarian) run monthly
 - Grep-before-read and frontmatter-first patterns cut file reading by ~80%
-- Local pre-processing: Marker for documents, a local vision model for images and handwriting, a local text model for classification. Claude reads a small `.extracted.md`, not the file
+- Local pre-processing: Marker for typed documents, a local vision model for images, handwriting and handwritten PDFs, a local text model for classification. Claude reads a small `.extracted.md`, not the file
 - Local speech-to-text, local topic matching, local label stripping
 - 3 AM batch: one invocation, shared context, a window you'd never otherwise use
 - Pre-generated study materials, once per note

@@ -749,7 +749,7 @@ done
 ### 0.11 -- Local Pre-Processing Pipeline (Marker + Local Vision Model)
 
 **Type:** Local scripts and local models on the 4070 Ti -- zero Claude tokens
-**Existing resource:** Marker (documents to Markdown, equations as LaTeX), Ollama with `qwen3-vl:8b` (reads images and handwriting) and `qwen3.5:9b` (text jobs), Surya text detection (label boxes), `qwen3-embedding:0.6b` (topic matching)
+**Existing resource:** Marker (documents to Markdown, equations as LaTeX), Ollama with `qwen3-vl:8b-instruct` (reads images, handwriting and handwritten PDFs) and `qwen3.5:9b` (text jobs), Surya text detection (label boxes), `qwen3-embedding:0.6b` (topic matching)
 **Model:** Local only -- this section exists specifically to AVOID using Claude tokens
 **Token tip:** This is the single biggest token optimization in the system. Local models now read handwriting well enough for a first pass, which the old Tesseract plan couldn't do at all.
 
@@ -757,8 +757,9 @@ done
 
 | Job | Before | Now | Why |
 |-----|--------|-----|-----|
-| Read images: printed text, whiteboards, handwriting | Tesseract (printed only); handwriting always went to Claude | `qwen3-vl:8b` | On socOCRbench's handwriting set it scored 0.48, against 0.13 for Tesseract and 0.54 for Claude Sonnet 4.6 |
-| PDF, PPTX, DOCX, XLSX to text | pdftotext, python-pptx, python-docx, openpyxl | Marker | One tool. Keeps layout and tables, writes equations as LaTeX, and saves figures as separate images |
+| Read images: printed text, whiteboards, handwriting | Tesseract (printed only); handwriting always went to Claude | `qwen3-vl:8b-instruct` | On socOCRbench's handwriting set Qwen3-VL 8B scored 0.48, against 0.13 for Tesseract and 0.54 for Claude Sonnet 4.6. The `-instruct` tag, not the default thinking `qwen3-vl:8b`, which looped on dense handwriting |
+| Handwritten PDFs (OneNote, Nebo, MyScript exports, scans) | Marker, which reads them poorly | Rendered per page (`pdftoppm -r 150`) and read by `qwen3-vl:8b-instruct` | Marker is built for typed documents; the vision model handles handwriting. See PDF routing below |
+| PDF, PPTX, DOCX, XLSX to text | pdftotext, python-pptx, python-docx, openpyxl | Marker (typed PDFs only) | One tool. Keeps layout and tables, writes equations as LaTeX, and saves figures as separate images |
 | Classify, course, topic candidates, summary | `phi3:mini` | `qwen3.5:9b` | A 2026 model versus Phi-3 from 2024, far better at following a schema; fits in VRAM with room to spare |
 | Label boxes for stripped diagrams | Claude vision estimating coordinates | `surya_detect` | Pixel-accurate text-line boxes, zero tokens |
 | Semantic topic match (Topic Matching Step 5) | Claude reading sample cards | `qwen3-embedding:0.6b` | Zero tokens |
@@ -772,6 +773,19 @@ done
 
 **GPU budget (12 GB VRAM):** only one big model fits at a time, like a single workbench that gets cleared between jobs. The 3 AM batch runs GPU work in sequence: speech-to-text (2.3), then Marker, then the Ollama models. Marker (through Surya 2) runs its models in a vLLM server inside Docker; `local-preprocess.py` converts every queued document in one Marker run, so that server starts once and exits before Ollama loads anything. On Windows, set the system environment variables `OLLAMA_MAX_LOADED_MODELS=1` and `OLLAMA_KEEP_ALIVE=2m`, then restart Ollama, so a finished model frees VRAM for the next step. Marker and the speech model run in WSL and release VRAM when their process exits.
 
+**PDF routing (handwritten vs typed), checked before Marker runs, cheapest first:**
+
+| Check | Result |
+|-------|--------|
+| 1. `pdfinfo` Creator/Producer names a note-taking app (`HANDWRITTEN_PDF_APPS`: OneNote, MyScript, Nebo) | vision model |
+| 2. `pdftotext` text layer under 100 chars/page (`TEXT_LAYER_HANDWRITTEN`) | vision model (handwritten or scanned) |
+| 2. Text layer 500+ chars/page (`TEXT_LAYER_TYPED`) | Marker |
+| 3. In between: the vision model looks at page 1 at 100 dpi (then unloads, `keep_alive=0`, so Marker gets the GPU) | handwritten/mixed -> vision model, else Marker |
+
+A vision-routed PDF is rendered to `<stem>_pages/page-N.png` and each page is read in two calls: the transcript as plain Markdown (asked inside a JSON string, the model loops on escaped LaTeX backslashes), then a small structured call for `text_type` and `has_diagram`. The page images stay, and `.meta.json` lists them as `page_images`, so Claude checks `[?]` words and math against the one page involved. The decision is recorded as `pdf_route` (e.g. `"vision -- made by OneNote"`).
+
+**Ollama settings that matter:** `think=False` on `qwen3.5:9b` (it thinks by default and can spend the whole output budget before answering, leaving structured output empty); `num_ctx 16384` (the 4096 default cuts off page images); `num_predict 4096`, `repeat_penalty 1.05`, `temperature 0`. The classifier's `course` field is an enum of the real folders in `03-Resources/study/` (or null), so it can't invent a course code. Transcripts that come back wrapped in a code fence are unwrapped.
+
 **Pre-processing script -- runs BEFORE Claude sees anything:**
 
 ```python
@@ -780,24 +794,31 @@ done
 # For each queued file: extract text (Marker for documents, the local vision
 # model for images), classify locally, and write <file>.extracted.md + <file>.meta.json
 
-import sys, json, subprocess, shutil, tempfile
+import sys, re, json, subprocess, shutil, tempfile
 from pathlib import Path
 import ollama
 
 VAULT = Path.home() / "brain-vault"
-VISION, TEXT = "qwen3-vl:8b", "qwen3.5:9b"
+VISION, TEXT = "qwen3-vl:8b-instruct", "qwen3.5:9b"  # the thinking qwen3-vl:8b loops on dense handwriting
 DOCS = {".pdf", ".pptx", ".docx", ".xlsx", ".html", ".epub"}
 IMAGES = {".png", ".jpg", ".jpeg", ".webp"}
+# Handwritten PDFs are read page by page by the vision model instead of Marker. Checks, cheapest first:
+HANDWRITTEN_PDF_APPS = ("OneNote", "MyScript", "Nebo")  # 1. Creator/Producer is a note-taking app
+TEXT_LAYER_HANDWRITTEN = 100    # 2. under this many text-layer chars/page: handwritten (or scanned)
+TEXT_LAYER_TYPED = 500          #    at least this many: typed. In between: 3. vision model checks page 1
 LOCAL_HANDWRITING = True        # False = all handwriting goes to Claude vision (old behavior)
 TRUST_HANDWRITTEN_MATH = False  # flip to True once your own equations transcribe correctly
 UNSURE_LIMIT = 0.02             # more than 2% of words marked [?] -> Claude checks the image
 
 READ_PROMPT = ("Transcribe all text in this image exactly, as Markdown. Write math as LaTeX "
                "($...$). Write [?] in place of any word you cannot read confidently.")
-READ_SCHEMA = {"type": "object", "required": ["transcript", "text_type", "has_diagram"],
-    "properties": {"transcript": {"type": "string"},
-                   "text_type": {"enum": ["typed", "handwritten", "mixed", "none"]},
+# The transcript is asked for as plain Markdown: inside a JSON string (with every LaTeX
+# backslash escaped) the vision model falls into repeat loops. Type and diagram are a second call.
+TYPE_PROMPT = "Is the text in this image typed, handwritten, mixed, or is there none? Does it contain a diagram, schematic, graph or chart?"
+TYPE_SCHEMA = {"type": "object", "required": ["text_type", "has_diagram"],
+    "properties": {"text_type": {"enum": ["typed", "handwritten", "mixed", "none"]},
                    "has_diagram": {"type": "boolean"}}}
+OPTIONS = {"temperature": 0, "num_ctx": 16384, "num_predict": 4096, "repeat_penalty": 1.05}
 
 CLASSIFY_PROMPT = """Classify this file for a CompEng student's notes vault.
 Known course codes: {courses}. Filename: {name}
@@ -812,11 +833,13 @@ CLASSIFY_SCHEMA = {"type": "object",
         "summary": {"type": "string"},
         "topic_candidates": {"type": "array", "items": {"type": "string"}}}}
 
-def ask(model, prompt, schema, image=None):
+def ask(model, prompt, schema, image=None, **kw):
     msg = {"role": "user", "content": prompt}
     if image:
         msg["images"] = [image]
-    r = ollama.chat(model=model, messages=[msg], format=schema, options={"temperature": 0})
+    if model == TEXT:
+        kw["think"] = False  # qwen3.5 thinks by default and can fill the output budget before answering
+    r = ollama.chat(model=model, messages=[msg], format=schema, options=OPTIONS, **kw)
     return json.loads(r["message"]["content"])
 
 def convert_documents(paths):
@@ -839,9 +862,51 @@ def convert_documents(paths):
     return results
 
 def read_image(path):
-    r = ask(VISION, READ_PROMPT, READ_SCHEMA, image=str(path))
-    return r["transcript"], {"text_type": r["text_type"], "has_diagram": r["has_diagram"],
-                             "extracted_images": []}
+    msg = {"role": "user", "content": READ_PROMPT, "images": [str(path)]}
+    transcript = ollama.chat(model=VISION, messages=[msg], options=OPTIONS)["message"]["content"]
+    transcript = re.sub(r"^```(?:markdown|md)?\s*\n(.*?)\n?```$", r"\1", transcript.strip(), flags=re.S)
+    r = ask(VISION, TYPE_PROMPT, TYPE_SCHEMA, image=str(path))
+    return transcript, {"text_type": r["text_type"], "has_diagram": r["has_diagram"],
+                        "extracted_images": []}
+
+def pdf_route(path):
+    """Return ("vision" | "marker", reason). Runs before Marker, so check 3 unloads its model."""
+    info = subprocess.run(["pdfinfo", str(path)], capture_output=True, text=True).stdout
+    made_by = " ".join(l for l in info.splitlines() if l.startswith(("Creator:", "Producer:")))
+    app = next((a for a in HANDWRITTEN_PDF_APPS if a.lower() in made_by.lower()), None)
+    if app:
+        return "vision", f"made by {app}"
+    pages = int(next((l.split()[1] for l in info.splitlines() if l.startswith("Pages:")), 1))
+    text = subprocess.run(["pdftotext", str(path), "-"], capture_output=True, text=True).stdout
+    per_page = len("".join(text.split())) // max(1, pages)
+    if per_page < TEXT_LAYER_HANDWRITTEN:
+        return "vision", f"text layer {per_page} chars/page"
+    if per_page >= TEXT_LAYER_TYPED:
+        return "marker", f"text layer {per_page} chars/page"
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run(["pdftoppm", "-r", "100", "-png", "-f", "1", "-l", "1", "-singlefile",
+                        str(path), f"{tmp}/p1"], check=True)
+        r = ask(VISION, TYPE_PROMPT, TYPE_SCHEMA, image=f"{tmp}/p1.png", keep_alive=0)
+    route = "vision" if r["text_type"] in ("handwritten", "mixed") else "marker"
+    return route, f"text layer {per_page} chars/page, page 1 looks {r['text_type']}"
+
+def read_pdf_pages(path):
+    """Render each page to <stem>_pages/page-N.png and read it with the vision model.
+    The page images stay, so Claude can check [?] words and math against the page."""
+    pages = path.parent / f"{path.stem}_pages"
+    pages.mkdir(exist_ok=True)
+    subprocess.run(["pdftoppm", "-r", "150", "-png", str(path), str(pages / "page")], check=True)
+    images = sorted(pages.glob("page-*.png"))
+    texts, types, has_diagram = [], set(), False
+    for img in images:
+        text, info = read_image(img)
+        texts.append(f"<!-- {img.name} -->\n{text}")
+        types.add(info["text_type"])
+        has_diagram |= info["has_diagram"]
+    types.discard("none")
+    text_type = types.pop() if len(types) == 1 else "mixed" if types else "none"
+    return "\n\n".join(texts), {"text_type": text_type, "has_diagram": has_diagram,
+                                "extracted_images": [], "page_images": [str(i) for i in images]}
 
 def needs_claude_vision(text, info):
     if info["has_diagram"]:
@@ -854,20 +919,23 @@ def needs_claude_vision(text, info):
             return True
     return False
 
-def preprocess(path, courses, converted):
+def preprocess(path, courses, converted, routes):
     ext = path.suffix.lower()
-    if ext in DOCS:
+    if path in converted:
         text, info = converted[path]
+    elif ext == ".pdf":
+        text, info = read_pdf_pages(path)
     elif ext in IMAGES:
         text, info = read_image(path)
     else:
         text, info = path.read_text(errors="ignore"), {"text_type": "typed", "has_diagram": False,
                                                         "extracted_images": []}
-    c = ask(TEXT, CLASSIFY_PROMPT.format(courses=courses, name=path.name, text=text[:4000]),
-            CLASSIFY_SCHEMA)
+    schema = json.loads(json.dumps(CLASSIFY_SCHEMA))
+    schema["properties"]["course"] = {"enum": [*courses, None]}  # only real course folders, or none
+    c = ask(TEXT, CLASSIFY_PROMPT.format(courses=courses, name=path.name, text=text[:4000]), schema)
     Path(f"{path}.extracted.md").write_text(text)
     meta = {"original_file": str(path), "extracted_text_path": f"{path}.extracted.md",
-            **info, **c, "unsure_words": text.count("[?]"),
+            **info, **({"pdf_route": routes[path]} if path in routes else {}), **c, "unsure_words": text.count("[?]"),
             "needs_claude_vision": needs_claude_vision(text, info),
             "confidence": "low" if c["classification"] == "unclassified" else "high"}
     Path(f"{path}.meta.json").write_text(json.dumps(meta, indent=2))
@@ -879,11 +947,14 @@ def main():
     courses = sorted(p.name for p in (VAULT / "03-Resources/study").iterdir() if p.is_dir())
     files = [Path(l.strip()) for l in queue.read_text().splitlines() if l.strip()]
     files = [f for f in files if f.exists()]
-    # Pass 1: every document through Marker at once (GPU: vLLM server, then released)
-    converted = convert_documents([f for f in files if f.suffix.lower() in DOCS])
-    # Pass 2: images and classification through Ollama (GPU: one model at a time)
+    # Pass 0: decide which PDFs are handwritten (vision model) and which are typed (Marker)
+    routes = {f: " -- ".join(pdf_route(f)) for f in files if f.suffix.lower() == ".pdf"}
+    # Pass 1: every typed document through Marker at once (GPU: vLLM server, then released)
+    converted = convert_documents([f for f in files if f.suffix.lower() in DOCS
+                                   and not routes.get(f, "").startswith("vision")])
+    # Pass 2: images, handwritten PDFs and classification through Ollama (GPU: one model at a time)
     for f in files:
-        preprocess(f, courses, converted)
+        preprocess(f, courses, converted, routes)
         print(f"  pre-processed: {f.name}")
 
 if __name__ == "__main__":
@@ -902,13 +973,15 @@ Modified Ingestion Step 2 (Visual Classification):
    - If yes: use classification, course, summary and topic_candidates from it.
      If confidence is "high", skip Claude classification entirely.
      If "low" (the local model said unclassified), fall through to Claude.
-   - If no: run Claude classification as normal (fallback)
+   - If no: run local-preprocess.py on it first (--queue with a temp
+     list of every such file, one run), then continue as above
 
 2. Check needs_claude_vision:
    - false: read [filename].extracted.md only. Claude never opens the
      original image or document. Cheapest path.
-   - true, handwriting: read .extracted.md, then look at the original only
-     to resolve the [?] words and any handwritten math.
+   - true, handwriting: read .extracted.md, then look only at the page
+     images that hold [?] words or handwritten math (page_images for a
+     vision-routed PDF, the image itself for a photo).
    - true, diagrams: read .extracted.md for the text, and use vision only
      on the figures Marker cut out (extracted_images), never whole pages.
 ```
@@ -927,7 +1000,7 @@ Modified Ingestion Step 2 (Visual Classification):
 
 - [ ] Create one Python environment for all the local tools (in WSL) with `uv`, pinned to Python 3.12 so Ubuntu's own Python version never matters: `uv venv --python 3.12 ~/.venvs/brain && uv pip install --python ~/.venvs/brain ollama "marker-pdf[full]" surya-ocr yt-dlp`. Marker brings in PyTorch with CUDA.
 - [ ] Give Marker its GPU model server: Docker Engine inside Ubuntu (`docker.io`, not Docker Desktop, which only runs after you sign in to Windows), your user in the `docker` group, and NVIDIA Container Toolkit (`nvidia-ctk runtime configure --runtime=docker`). Test with `docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi`. Exact commands are in the install guide, Stage 5. The text detector behind `surya_detect` still runs in-process, so the label stripper doesn't need this. (yt-dlp comes from pip, not apt, because YouTube breaks old versions; update it monthly.) Point every script's first line at `~/.venvs/brain/bin/python`.
-- [ ] Pull the local models from a Windows terminal: `ollama pull qwen3-vl:8b`, `ollama pull qwen3.5:9b`, `ollama pull qwen3-embedding:0.6b` (about 14 GB of disk together)
+- [ ] Pull the local models from a Windows terminal: `ollama pull qwen3-vl:8b-instruct`, `ollama pull qwen3.5:9b`, `ollama pull qwen3-embedding:0.6b` (about 14 GB of disk together)
 - [ ] Set `OLLAMA_MAX_LOADED_MODELS=1` and `OLLAMA_KEEP_ALIVE=2m` as Windows system environment variables, then restart Ollama
 - [ ] Save `local-preprocess.py` to `personal/scripts/` in your fork (`~/brain-vault/My-Brain-Is-Full-Crew/personal/scripts/`)
 - [ ] Update the 3 AM batch script to run `local-preprocess.py` before invoking Claude (already shown in 0.3 batch-triage.sh)
@@ -938,8 +1011,9 @@ Modified Ingestion Step 2 (Visual Classification):
   - Mostly wrong: set `LOCAL_HANDWRITING = False`, and handwriting goes to Claude vision as before.
 - [ ] Test: drop a typed PDF -> verify `.meta.json` and `.extracted.md` are created locally, with equations as LaTeX -> verify Claude reads the Markdown instead of the full PDF
 - [ ] Test: drop a slide deck with circuit figures -> verify Marker saved the figures as separate images and `needs_claude_vision` is true
+- [ ] Test: drop a OneNote or Nebo PDF export -> verify `pdf_route` starts with `vision`, `<stem>_pages/` holds one PNG per page, and Marker never ran on it
 
-**VRAM and RAM:** `qwen3-vl:8b` and `qwen3.5:9b` each need roughly 7-9 GB of VRAM when loaded, so they take turns (the environment variables above handle it). Marker's models and the speech model (2.3) run one at a time in the same batch. With 64 GB of system RAM, nothing here is tight on the CPU side.
+**VRAM and RAM:** `qwen3-vl:8b-instruct` and `qwen3.5:9b` each need roughly 7-9 GB of VRAM when loaded, so they take turns (the environment variables above handle it). Marker's models and the speech model (2.3) run one at a time in the same batch. With 64 GB of system RAM, nothing here is tight on the CPU side.
 
 ---
 
@@ -1271,9 +1345,9 @@ These are the pieces that make the system uniquely yours. Build these before cla
 
 **Type:** Custom agent -- fork `agents/<name>.md` (source format, see 0.12), registered in the dispatcher block + registry
 **Existing resource:** None -- custom build; local pre-processing (0.11) does the heavy lifting before it runs
-**Model:** Haiku for file classification, Sonnet for OCR/complex parsing
-**Token tip:** Use Haiku for the "what is this file?" classification step. Only escalate to Sonnet for actual content extraction. Vision classification of an image is cheap.
-**Required premade skills:** None, but uses `view` tool for vision
+**Model:** `mid` (Sonnet 5.5). Classification and reading are already done locally (0.11): `qwen3.5:9b` classifies, `qwen3-vl:8b-instruct` reads images and handwritten PDFs, Marker converts typed documents
+**Token tip:** Claude reads `<file>.meta.json` and `<file>.extracted.md`, never the original, except the specific page images with `[?]` words or handwritten math and the figures Marker cut out. A file with no `.meta.json` gets `local-preprocess.py` run on it first.
+**Required premade skills:** notebooklm-py CLI (4.1); vision through the Read tool
 
 **Core behavior:**
 
@@ -1282,7 +1356,7 @@ These are the pieces that make the system uniquely yours. Build these before cla
 
   **Step 1: Determine file type** (image, PDF, audio, text)
 
-  **Step 2: Visual classification** -- for images/PDFs, use `view` to classify:
+  **Step 2: Read `.meta.json` first** (0.11, "How Claude uses pre-processed data"). `confidence: high` means the local classification stands; `low` falls to the fallback chain. Visual categories the chain distinguishes:
   - handwritten notes, diagram/schematic, screenshot, assignment, whiteboard photo, textbook page, graph/chart, photo, personal/non-academic content
 
   **Step 3: Content classification and routing** -- determine what category this file belongs to using the Smart Classification Fallback Chain (below), then route accordingly:
@@ -1308,7 +1382,7 @@ These are the pieces that make the system uniquely yours. Build these before cla
 
   **Step 7: For PDFs that look like assignments:** hand off to Decomposer agent
 
-  **Step 8: Auto-upload to NotebookLM:** If the file is academic course material, call the NotebookLM skill (4.1) to add it as a source to the correct course notebook. The course is determined from frontmatter `course:` tag.
+  **Step 8: Auto-upload to NotebookLM:** If the file is academic course material, look up `courses.<course>.notebook_id` in `Meta/notebooklm-notebooks.json` and run `notebooklm source add "<original file>" -n <notebook_id> --title "<note title>" --timeout 120` (4.1). No entry for the course: `notebooklm create "<course> - <title>" --json` and record it. An upload failure is reported but doesn't stop filing.
 
   **Step 9: Hand off** -- use upstream's protocol: end the output with `### Suggested next agent` (e.g., `decomposer` for an assignment), and the dispatcher chains it. This works in a live session and inside the 3 AM `claude --print` run alike. Notes left in `{{inbox}}` are filed by `/inbox-triage` (3 AM batch, Step 3), so ingestion doesn't need to chain the Sorter.
 
@@ -1419,7 +1493,11 @@ When the ingestion agent processes a document that may contain embedded images, 
 
 ```
 What Marker already did (0.11, zero tokens):
-- .pdf / .pptx / .docx / .xlsx / .html -> one Markdown file per document,
+- Handwritten PDFs never reach Marker (0.11 PDF routing): the vision
+  model reads them page by page, and the page images are listed as
+  page_images. They have no extracted_images; a page with a drawn
+  diagram is flagged has_diagram, and Claude looks at that page image.
+- Typed .pdf / .pptx / .docx / .xlsx / .html -> one Markdown file per document,
   with tables kept, equations written as LaTeX, and every figure saved
   as its own image next to the Markdown (listed in meta.json as
   extracted_images). Each slide or page keeps its heading, so figures
@@ -1468,7 +1546,7 @@ Stripped Image Generation (personal/scripts/strip-labels.py, zero tokens):
      -draw "rectangle x1,y1 x2,y2" \
      -draw "rectangle x3,y3 x4,y4" \
      stripped.png
-3. Verify locally with qwen3-vl:8b: "Is any text still readable in
+3. Verify locally with qwen3-vl:8b-instruct: "Is any text still readable in
    this image? Is the circuit/diagram structure still intact?"
    (structured yes/no answer)
 4. If verification fails (label partially visible, or structure
@@ -1781,12 +1859,12 @@ original_filename: "032.pdf"
 
 **Steps:**
 
-- [ ] Write the agent prompt (.md file)
-- [ ] Add to `.claude/agents/` directory
-- [ ] Create `Meta/pending-requests.md` template
-- [ ] Create the topic taxonomy directory structure: `mkdir -p 03-Resources/study/{EE225,COMP_ENG_303,...}/{cards,quizzes,formulas,diagrams}` for each course
-- [ ] Create initial `topics.json` for each course (can be empty `{"course": "EE225", "topics": {}}`)
-- [ ] Create initial `Meta/image-categories.json` (can be empty `{"categories": {}}`)
+- [x] Write the agent prompt (.md file)
+- [x] Add to `.claude/agents/` directory
+- [x] Create `Meta/pending-requests.md` template
+- [x] Create the topic taxonomy directory structure: `mkdir -p 03-Resources/study/{EE225,COMP_ENG_303,...}/{cards,quizzes,formulas,diagrams}` for each course
+- [x] Create initial `topics.json` for each course (can be empty `{"course": "EE225", "topics": {}}`)
+- [x] Create initial `Meta/image-categories.json` (can be empty `{"categories": {}}`)
 - [ ] Write the generation subagent prompt that includes the Topic Matching Protocol AND the Image-Aware Generation Protocol (this is a separate .md file the ingestion agent spawns as a subagent)
 - [ ] ImageMagick and poppler-utils are already installed in WSL (0.0); Marker and Surya in the venv (0.11)
 - [ ] Document extraction is Marker, installed in 0.11 -- nothing extra here
@@ -1808,13 +1886,18 @@ original_filename: "032.pdf"
 - [ ] Handwriting OCR is now handled locally in 0.11; revisit the `UNSURE_LIMIT` threshold after a few weeks based on how often Claude had to re-check pages
 - [ ] Add audio transcription handoff (detect .m4a, .mp3, .wav -> trigger Transcriber)
 - [ ] Add support for multiple files in batch (e.g., 5 photos of whiteboard from a single lecture)
-- [ ] **NotebookLM auto-upload refinement:** Maintain a mapping file `Meta/notebooklm-notebooks.json` that maps course tags to NotebookLM notebook IDs. When a new course is detected that has no notebook, auto-create one via the skill. Example:
+- [x] **NotebookLM mapping file:** `Meta/notebooklm-notebooks.json` maps course codes (the folder names in `03-Resources/study/`) to NotebookLM notebook IDs. When a new course has no notebook, ingestion creates one with `notebooklm create` and adds it. Format:
 
 ```json
 {
-  "EE225": {"notebook_id": "abc123", "notebook_url": "https://notebooklm.google.com/notebook/abc123", "name": "EE225 - Circuit Analysis"},
-  "COMP_ENG_393": {"notebook_id": "def456", "notebook_url": "https://notebooklm.google.com/notebook/def456", "name": "COMP_ENG 393 - Area Elective"},
-  "MATH_xxx": {"notebook_id": "ghi789", "notebook_url": "https://notebooklm.google.com/notebook/ghi789", "name": "Linear Algebra"}
+  "updated": "2026-09-30",
+  "courses": {
+    "EE202": {
+      "title": "Introduction to Electrical Engineering",
+      "notebook_id": "6c64aa82-6765-4e39-82a1-fed2aba4b4b9",
+      "notebook_title": "EE202 - Introduction to Electrical Engineering"
+    }
+  }
 }
 ```
 
@@ -3966,7 +4049,7 @@ In Claude Code (September 2026), `haiku` = Haiku 4.5, `sonnet` = Sonnet 5.5, `op
 | Distributor | Haiku | Filtering/ranking metadata, no deep reasoning |
 | Decomposer | Sonnet | Needs to understand assignments and generate good task breakdowns |
 | Ingestion classifier | **Local `qwen3.5:9b`**; Haiku only if it says unclassified | Classification moved to 0.11 pre-processing |
-| Ingestion OCR/parsing | **Local (`qwen3-vl:8b`, Marker)**; Sonnet vision only for flagged pages and diagram figures | 0.11 |
+| Ingestion OCR/parsing | **Local (`qwen3-vl:8b-instruct` for images and handwritten PDFs, Marker for typed documents)**; Sonnet vision only for flagged pages and diagram figures | 0.11 |
 | Study - session orchestrator | Sonnet (session default) + forked Haiku `/study-log` | Brain dump evaluation, mode selection and self-assessment on Sonnet; logging and bookkeeping on Haiku (2.2k). |
 | Study - flashcard review | **Kiosk (0 tokens per card)** | `/review` and `/s/{id}/flashcards` (0.13). FSRS-6 runs server-side and writes `review-state/`. ~150 tokens to launch from a session, 0 standalone. Works on your phone over Tailscale. |
 | Study - MC quiz / formula practice | **Kiosk (0 tokens per question)** | `/s/{id}/quiz`. Auto-checking and randomized values; formulas go through the safe evaluator. |
@@ -3983,7 +4066,7 @@ In Claude Code (September 2026), `haiku` = Haiku 4.5, `sonnet` = Sonnet 5.5, `op
 | Study - diagram Direction C (reproduction) | Kiosk + Sonnet | Kiosk shows the diagram on a timer and takes the photo upload; Sonnet + vision compares your reproduction. |
 | Image classification (fallback chain) | Haiku | Steps 1-4 of fallback chain are cheap. Step 5 (ask user) is ~500 tokens. Only escalate to Sonnet for complex PDFs with image extraction. |
 | Document image extraction | Marker (local) + Sonnet vision per figure | Marker cuts figures out locally; Sonnet only describes the figures, never whole pages. |
-| Stripped image generation | None | `surya_detect` boxes + ImageMagick + a local `qwen3-vl:8b` check. Zero Claude tokens. |
+| Stripped image generation | None | `surya_detect` boxes + ImageMagick + a local `qwen3-vl:8b-instruct` check. Zero Claude tokens. |
 | Habit Tracker (tracking) | Haiku | JSON updates, streak calculations. Trivial. |
 | Habit Tracker (creation/adaptation) | Sonnet | Generating onboarding plans, suggesting adaptations, proactive habit suggestions. Runs rarely. |
 | Habit dashboard | **Kiosk (0 tokens)** | `/habits` reads `habits.json` directly. |
@@ -3995,7 +4078,7 @@ In Claude Code (September 2026), `haiku` = Haiku 4.5, `sonnet` = Sonnet 5.5, `op
 | Dynamic Scheduler (rescheduling) | Haiku | Reads today.json, applies the change, runs `push-schedule.sh`. ~1,500 tokens per adaptation. |
 | Dynamic Scheduler (weekly plan) | Sonnet | Generates 7-day lookahead. Runs once weekly. ~5,000 tokens. |
 | Calendar cache sync + push | None | `calendar-sync.sh` and `push-schedule.sh` via gws. Zero Claude tokens. |
-| Local pre-processing (reading) | None (local) | `qwen3-vl:8b` reads images and handwriting; Marker converts documents. Zero Claude tokens. |
+| Local pre-processing (reading) | None (local) | `qwen3-vl:8b-instruct` reads images, handwriting and handwritten PDFs; Marker converts typed documents. Zero Claude tokens. |
 | Local pre-processing (classification, summaries) | None (local) | `qwen3.5:9b` classifies files, identifies courses, proposes topics and writes summaries. Zero Claude tokens. |
 | Topic matching Step 5 | None (local) | `qwen3-embedding:0.6b` similarity. Zero Claude tokens. |
 | Lecture speech-to-text | None (local) | Granite Speech 4.1 2B with course keywords (2.3). Zero Claude tokens. |
@@ -4057,7 +4140,7 @@ In Claude Code (September 2026), `haiku` = Haiku 4.5, `sonnet` = Sonnet 5.5, `op
 
 ### Week 1:
 11. 0.3 -- Google Drive sync pipeline (with 3 AM batch + immediate-exception file watcher)
-12. 0.11 -- Local pre-processing pipeline: venv with Marker + Surya, pull `qwen3-vl:8b`, `qwen3.5:9b`, `qwen3-embedding:0.6b`, set up local-preprocess.py, **run the 10-page handwriting test**
+12. 0.11 -- Local pre-processing pipeline: venv with Marker + Surya, pull `qwen3-vl:8b-instruct`, `qwen3.5:9b`, `qwen3-embedding:0.6b`, set up local-preprocess.py, **run the 10-page handwriting test**
 13. 1.1 -- Ingestion pipeline agent (classify + file + smart classification fallback chain + image-categories.json + **reads .meta.json from local pre-processing**) + topic taxonomy + generation subagent with Topic Matching Protocol + Image-Aware Generation
 14. 1.2 -- Decomposer agent (break down first real assignments)
 15. 0.8 -- Write our agents lean, add `summarize-missing.py` to the 3 AM batch (measure upstream prompts later, trim only what's hot)

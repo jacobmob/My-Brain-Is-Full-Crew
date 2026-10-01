@@ -159,6 +159,9 @@ For the definitive list of all agents (core + custom) with capabilities, inputs,
 ### distributor
 Picks the single best next task (time and energy filtered, ranked by priority, due date, and what it unblocks) from task-note frontmatter. Handles "done": marks the task complete, logs duration, unblocks dependents. Consumes `Meta/events/distributor/`. Capabilities: read, write, edit, bash. Model: low.
 
+### ingestion
+Processes uploads from `drive-inbox/` and `Meta/ingestion-queue.txt`. Reads each file's `.meta.json` from local pre-processing first (running `local-preprocess.py` when it is missing), classifies with the Smart Classification Fallback Chain and `Meta/image-categories.json`, honors `Meta/pending-requests.md`, routes by classification (rpg-content by campaign aliases), extracts and strips diagrams, fills per-topic formula sheets, and uploads course material to NotebookLM via `Meta/notebooklm-notebooks.json`. Hands assignments to the decomposer. Capabilities: read, write, edit, bash. Model: mid.
+
 <!-- MBIFC:CUSTOM_AGENTS_END -->
 
 ### How Custom Agents Coordinate
