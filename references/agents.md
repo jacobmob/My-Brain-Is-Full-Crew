@@ -156,6 +156,9 @@ Custom agents are created by the Architect and live in `.platform/agents/` along
 For the definitive list of all agents (core + custom) with capabilities, inputs, outputs, and status, see `.platform/references/agents-registry.md`.
 
 <!-- MBIFC:CUSTOM_AGENTS_START -->
+### distributor
+Picks the single best next task (time and energy filtered, ranked by priority, due date, and what it unblocks) from task-note frontmatter. Handles "done": marks the task complete, logs duration, unblocks dependents. Consumes `Meta/events/distributor/`. Capabilities: read, write, edit, bash. Model: low.
+
 <!-- MBIFC:CUSTOM_AGENTS_END -->
 
 ### How Custom Agents Coordinate

@@ -7,6 +7,11 @@
 <!-- JACOB:START personal extensions -->
 ## Personal extensions -- defined in this project, valid to use
 
+### Extra agents -- check THESE triggers BEFORE the core agent table
+| Agent | Triggers |
+|-------|----------|
+| distributor | "what should I do", "I have [N] minutes", "energy [N]", "done", "finished", "I'm stuck", "next task" |
+
 ### Extra tools that exist in this project
 - CLI: gws, rclone, marker_single, surya_detect, yt-dlp, python scripts in My-Brain-Is-Full-Crew/personal/scripts/, Ollama API (http://localhost:11434)
 - Installed third-party skills: notebooklm (notebooklm-py), deep-research, learn-this, youtube-transcript, article-extractor, unblock-action, create-ideas
