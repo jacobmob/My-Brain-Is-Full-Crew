@@ -223,19 +223,37 @@ def update_review_state(course: str, topic: str, card_id: str, fn) -> dict:
         return entry
 
 
+def fuzzy_topics(course: str) -> set[str]:
+    """Topics the user called fuzzy at the end of a study session (2.2k), while today <= fuzzy_until."""
+    registry = (read_json(course_dir(course) / "topics.json") or {}).get("topics", {})
+    return {slug for slug, t in registry.items() if (t or {}).get("fuzzy_until", "") >= today()}
+
+
+def due_at(card: dict, fs: dict, now: datetime, fuzzy: set[str]) -> str | None:
+    """The sort key if a reviewed card is due, else None. A fuzzy topic's cards count as due
+    once a day (not yet reviewed today) until fuzzy_until, whatever FSRS says."""
+    if parse_time(fs["due"]) <= now:
+        return fs["due"]
+    last = fs.get("last_review")
+    if card["topic"] in fuzzy and last and parse_time(last).astimezone().date() < now.astimezone().date():
+        return last
+    return None
+
+
 def due_cards(now: datetime | None = None) -> list[dict]:
     """Every due card across all courses: overdue reviews first (oldest due first), then new cards."""
     now = now or datetime.now(timezone.utc)
     reviews, new = [], []
     for course in courses():
+        fuzzy = fuzzy_topics(course)
         for topic in topics(course):
             state = load_review_state(course, topic)
             for card in load_cards(course, topic):
                 fs = card_fsrs(card, state)
                 if fs is None:
                     new.append(card)
-                elif datetime.fromisoformat(fs["due"]) <= now:
-                    card["_due"] = fs["due"]
+                elif due := due_at(card, fs, now, fuzzy):
+                    card["_due"] = due
                     reviews.append(card)
     reviews.sort(key=lambda c: c["_due"])
     return reviews + new

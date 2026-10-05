@@ -1,0 +1,5 @@
+# Remediation subagent (study skill, step 10)
+
+Agent tool, `subagent_type: general-purpose`, `model: sonnet`, prompt:
+
+"Today: <date>. Write remediation study items for <course>, session <session_id>. Weak areas: brain dump gaps <...>; fuzzy <fuzzy_areas>; missed card IDs <...>; missed quiz IDs <...>. Read `.claude/skills/study-gen/SKILL.md` (Paths, Formats, Topic Matching Protocol) and follow it. Find each missed item by grepping its ID in `<S>/cards/` and `<S>/quizzes/`; read the relevant sections of that topic's source notes. Write 5-10 cards and 2-3 practice problems or multiple-choice questions aimed at exactly these weaknesses, filed in each weakness's own topic file, each with `remediation: "<session_id>"`. Don't repeat existing items. Recount `card_count`/`quiz_count` in topics.json. Then write `{{meta}}/events/study-skill/evt_<YYYYMMDDTHHMMSS>_remediation.json`: `{from: remediation, to: study-skill, type: new-material, summary, refs: [<course>/<topic>], timestamp, priority: normal}`. Report counts per topic."

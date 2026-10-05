@@ -10,7 +10,8 @@
 ### Extra skills (same priority as the skill table)
 | Skill | Triggers |
 |-------|----------|
-| /study | "I want to study [topic]", "study time", "review [course]", "quiz me on", "teach me", "exam prep"; "done"/"finished" while a study session is running in this conversation (before distributor) |
+| /study | "I want to study [topic]", "study time", "review [course]", "quiz me on", "teach me", "exam prep"; "next", "done"/"finished" while a study session is running in this conversation or `Meta/study-session-state.json` has a `step` other than `done` from today (before distributor) |
+| /study-log | only from /study at the end of a session (forked, Haiku) |
 | /study-gen | after ingestion returns `### Suggested next skill` with study-gen: run /study-gen on those notes (not part of the 3-agent limit); 3 AM batch |
 
 ### Extra agents -- check THESE triggers BEFORE the core agent table

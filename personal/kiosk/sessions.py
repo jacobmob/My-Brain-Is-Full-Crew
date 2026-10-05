@@ -52,8 +52,9 @@ def expand(slugs, registry, with_subtopics, have) -> list[str]:
     return out
 
 
-def _pool(course: str, topic: str, flt: str, now: datetime) -> list[dict]:
+def _pool(course: str, topic: str, flt: str, now: datetime, fuzzy: set[str]) -> list[dict]:
     """One topic's cards for the deck, in review order: overdue first (oldest due first), then new.
+    Fuzzy topics' cards count as due (store.due_at).
     "weak" keeps reviewed cards last rated Again/Hard or under 70% right, worst first."""
     state = store.load_review_state(course, topic)
     due, new, rest, weak = [], [], [], []
@@ -67,8 +68,8 @@ def _pool(course: str, topic: str, flt: str, now: datetime) -> list[dict]:
             continue
         if fs is None:
             new.append(card)
-        elif store.parse_time(fs["due"]) <= now:
-            card["_due"] = fs["due"]
+        elif due_key := store.due_at(card, fs, now, fuzzy):
+            card["_due"] = due_key
             due.append(card)
         elif flt == "all":
             rest.append((fs["due"], card))
@@ -121,6 +122,7 @@ def build_deck(spec: dict, now: datetime | None = None, rng: random.Random | Non
     registry = topic_registry(course)
     have = set(store.topics(course))
     subs = bool(spec.get("include_subtopics"))
+    fuzzy = store.fuzzy_topics(course)
 
     primary = expand(spec.get("topics"), registry, subs, have)
     related = []
@@ -129,9 +131,9 @@ def build_deck(spec: dict, now: datetime | None = None, rng: random.Random | Non
         related = [t for t in expand(named, registry, subs, have) if t not in primary]
 
     # The primary topic and its subtopics form one pool, in due order across them.
-    main = [c for t in primary for c in _pool(course, t, flt, now)]
+    main = [c for t in primary for c in _pool(course, t, flt, now, fuzzy)]
     main.sort(key=lambda c: (0, c["_due"]) if "_due" in c else (1, ""))
-    pools = [main] + [_pool(course, t, flt, now) for t in related]
+    pools = [main] + [_pool(course, t, flt, now, fuzzy) for t in related]
     take = _allocate(pools, limit)
     pools = [p[:n] for p, n in zip(pools, take)]
     cards = _mix(pools, rng) if related else pools[0]
