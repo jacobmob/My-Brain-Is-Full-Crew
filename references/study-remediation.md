@@ -1,4 +1,4 @@
-# Remediation subagent (study skill, step 10)
+# Remediation subagent (study skill, orchestrator step 10)
 
 Agent tool, `subagent_type: general-purpose`, `model: sonnet`, prompt:
 

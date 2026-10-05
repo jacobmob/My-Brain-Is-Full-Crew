@@ -13,7 +13,7 @@ Runs inline on the session model. Built modes: **flashcards** and **quiz** (Kios
 
 ## Paths and rules
 
-Resolve `{{resources}}`, `{{meta}}`, `{{daily}}` from `Meta/vault-map.md` (this literal path); if absent use `03-Resources`, `Meta`, `07-Daily`. `S` = `{{resources}}/study/<course>`. `STATE` = `{{meta}}/study-session-state.json` (fields: `state.md` beside this file; read it once per session). `LOG` = `My-Brain-Is-Full-Crew/personal/scripts/study-log.py`. Bash from the vault root, relative paths, one command per call, no `cd`. Never generate questions and never read card, quiz or review-state files: the Kiosk does that. Write `STATE` whole, keeping every field already there.
+Resolve `{{resources}}`, `{{meta}}`, `{{daily}}` from `Meta/vault-map.md` (this literal path); if absent use `03-Resources`, `Meta`, `07-Daily`. `S` = `{{resources}}/study/<course>`. `STATE` = `{{meta}}/study-session-state.json` (fields: `.claude/references/study-session-state.md`; read it once per session). `LOG` = `My-Brain-Is-Full-Crew/personal/scripts/study-log.py`. Bash from the vault root, relative paths, one command per call, no `cd`. Never generate questions and never read card, quiz or review-state files: the Kiosk does that. Write `STATE` whole, keeping every field already there.
 
 ## Orchestrator (always runs first)
 
@@ -30,7 +30,7 @@ Resolve `{{resources}}`, `{{meta}}`, `{{daily}}` from `Meta/vault-map.md` (this 
 7. **Kiosk modes** (below), in plan order. When all are done, go to 8.
 8. **Self-assessment.** "We covered <topics>. What still feels fuzzy? Anything you want to come back to?" Map the answer to topic slugs (`fuzzy_topics`) and short phrases (`fuzzy_areas`); "nothing" is fine. Save, `step: log`.
 9. **Log.** Invoke the `study-log` skill with the session ID. Relay its 1-2 lines plus, from `STATE`: minutes planned vs used per mode, and fuzzy topics "come back as due until <fuzzy_until>".
-10. **Remediation.** If there are brain dump gaps, `weak_cards`, `overconfident`, `weak_items`, `gave_up` or fuzzy areas: start the subagent in `remediation.md` (beside this file) in the background and say "Remediation cards are being written; they'll be in your next session." Set `step: done`.
+10. **Remediation.** If there are brain dump gaps, `weak_cards`, `overconfident`, `weak_items`, `gave_up` or fuzzy areas: start the subagent in `.claude/references/study-remediation.md` in the background and say "Remediation cards are being written; they'll be in your next session." Set `step: done`.
 
 ## Kiosk modes (flashcards, quiz)
 
